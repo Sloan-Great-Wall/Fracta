@@ -227,6 +227,23 @@ Milestones are user-visible deliverables that combine work across phases and tra
 - Crypto: attestation, incentives, and marketplace transactions.
 - Performance targets met.
 
+### 4.4 Narrative staging (tentative marketing strategy)
+
+> **Status**: tentative — to be revisited when approaching public launch. This section captures the directional intent, not final copy.
+
+"Life operating system" is the **internal architecture vision**, not the external pitch. The term risks sounding too heavy, too geeky, and attracting only tool-hopping power users who eventually return to defaults.
+
+**Principle**: let users *discover* that Fracta is a life OS; don't tell them upfront. Lead with a narrow, concrete entry experience. Widen the narrative as the product proves depth.
+
+| Milestone | External narrative (tentative) | What users experience |
+|-----------|-------------------------------|----------------------|
+| 0.1 First Light | "Finder, but it understands your files" | Smart file browsing + search + AI |
+| 0.2 Past | "See your day as a story" | Auto-generated daily timeline + narrative journaling |
+| 0.3 Now + LIV | "Focus on what matters" | Quest-based execution system with guardrails |
+| 1.0 Full | *(users say it themselves)* — "This is my life OS" | All areas integrated, marketplace, full AI + crypto |
+
+**Reference precedents**: successful consumer products lead with narrow entry, then reveal depth (iPhone → "phone + iPod + internet"; Arc → "a better way to browse"; Superhuman → "fastest email ever"). None led with "operating system for your life."
+
 ---
 
 ## 5. Backlog (unplanned ideas)

@@ -9,30 +9,55 @@ alwaysApply: true
 
 Fracta is a **local-first life operating system**: a modular personal data workbench with a file/note/communication engine at its core, a semantic framework for organizing knowledge (Library), executing projects (Now), and reflecting on time (Past), and an application layer where methodologies like LIV, AI copilots, crypto incentives, and third-party integrations come together — all on open formats, without vendor lock-in.
 
-Currently in the **software definition / design phase** (docs only, no implementation code yet).
+Transitioning from **design phase** to **Phase 1 implementation** (Engine skeleton).
 
 ## Repository Structure
 
 ```
-README.md              — Repo entrypoint
+Cargo.toml                   — Rust workspace root
+crates/
+  fracta-vfs/                — Engine: file/folder CRUD, watching, atomic writes, scope
+  fracta-index/              — Engine: SQLite index + FTS5
+  fracta-query/              — Engine: filter/sort/group/aggregate
+  fracta-note/               — Engine: Markdown parser + block model
+  fracta-comm/               — Engine: IMAP/CalDAV/RSS/HTTP transports (stub)
+  fracta-sync/               — Engine: conflict resolution, multi-device (stub)
+  fracta-crypto/             — Engine: signing, hashing, key management (stub)
+  fracta-ai/                 — Engine: LLM call interface, embeddings (stub)
+  fracta-platform/           — Engine: platform adapter traits
+  fracta-framework/          — Framework: Primitives, Pipelines, Orchestrator (stub)
+  fracta-ffi/                — UniFFI bridge to Swift (stub)
 docs/
-  README.md            — Docs entrypoint + reading order
-  SPEC.md              — System definition (why / what / constraints / architecture / invariants)
-  PRD.md               — Product scope, milestones, roadmap, backlog
-  ENGINEERING.md       — Architecture + implementation guidance
-  LIV_System_Manual.md — Default execution methodology (Player Guide + System Spec)
-  adr/                 — Architecture Decision Records (13 ADRs)
+  SPEC.md                    — System definition (invariants, architecture)
+  PRD.md                     — Scope, milestones, roadmap, backlog
+  ENGINEERING.md             — Architecture + implementation guidance + tech selections
+  LIV_System_Manual.md       — Default methodology (Player Guide + System Spec)
+  profiles/
+    liv-profile-spec.md      — LIV Profile implementation spec (maps LIV → Fracta Primitives)
+  adr/                       — Architecture Decision Records (13 ADRs)
 ```
 
 ## Document Boundaries
 
 - **SPEC** — What must not break (principles, three-layer architecture, object model, invariants)
 - **PRD** — What to build next (milestones, roadmap, scope, backlog)
-- **ENGINEERING** — How to build it (architecture, storage, pipelines, conventions)
-- **LIV Manual** — Default methodology (game-inspired execution system)
+- **ENGINEERING** — How to build it (architecture, storage, pipelines, tech selections, conventions)
+- **LIV Manual** — Default methodology, user-facing (game-inspired execution system)
+- **LIV Profile Spec** — Developer-facing: LIV objects → Fracta Primitives, config schema, enforcement
 - **ADR** — Why we decided X (trade-offs, alternatives, consequences)
 
-## Three-Layer Architecture (decided, not yet implemented)
+## Tech Stack
+
+- **Rust** (stable) — Engine + Framework (cross-platform core)
+- **Swift 6 + SwiftUI** — Application UI (Apple platforms)
+- **UniFFI** — Rust ↔ Swift FFI bridge
+- **Tokio** — Async runtime
+- **rusqlite** (bundled) — SQLite + FTS5
+- **comrak** — Markdown parsing (GFM, full mutable AST)
+- **serde** — Serialization (JSON/YAML)
+- **ed25519-dalek + blake3** — Crypto primitives
+
+## Three-Layer Architecture
 
 - **Engine Layer** — Generic infrastructure: VFS, Index, Query, Note, Comm (IMAP/CalDAV/RSS), Sync, Crypto Primitives, AI Primitives, Platform Adapters
 - **Framework Layer** — Semantic layer: Primitives (Item/Record/Event/Quest/Loot/Claim/Token...), Pipelines, AI Orchestrator, Crypto/Token Engine, Knowledge Engine, Extension API
@@ -69,7 +94,7 @@ Reference: `docs/adr/0010-three-layer-architecture.md`
 
 ## Current Milestones (from PRD)
 
-- **0.0 Foundation** ← current — Architecture decisions, interface specs, schemas, `.fracta/` layout
+- **0.0 Foundation** ← nearly complete — Architecture decisions, interface specs, tech selections, project scaffold
 - **0.1 First Light** — App opens, browses files, renders Markdown, AI interface functional
 - **0.2 Past Insight Dashboard** — Ingestors, AI timeline, daily Markdown SOT, metrics, summaries
 - **0.3 Now + LIV** — Quest/Loot Primitives, LIV Profile, AI guardrails, token rewards

@@ -271,7 +271,71 @@ Exports and chain-anchoring must filter by privacy level. Sensitive content is n
 
 ---
 
-## 6. Engineering conventions (initial)
+## 6. Technology selections
+
+### 6.1 Core language and runtime
+
+| Choice | Decision | Rationale |
+|--------|----------|-----------|
+| **Core language** | Rust (stable toolchain) | Cross-platform, memory-safe, no GC pauses, good FFI story |
+| **Async runtime** | Tokio | Industry standard, largest async ecosystem, required by many Rust libraries |
+| **UI language** | Swift 6 + SwiftUI | Apple-native, modern concurrency model, required for platform APIs |
+| **FFI bridge** | UniFFI (mozilla/uniffi-rs) | Generates Swift/Kotlin bindings from Rust, handles type conversion automatically |
+
+### 6.2 Key dependencies
+
+| Subsystem | Crate | Why |
+|-----------|-------|-----|
+| **SQLite** | `rusqlite` (bundled) | Most mature Rust SQLite binding; bundling avoids system version issues |
+| **Full-text search** | SQLite FTS5 (via rusqlite) | Ships with SQLite, zero extra binary size; adequate for personal-data scale |
+| **Markdown parser** | `comrak` | GFM superset (tables, task lists, strikethrough, footnotes); full mutable AST for custom block model |
+| **File watching** | `notify` | Cross-platform filesystem watcher; debounced events |
+| **Serialization** | `serde` + `serde_json` + `serde_yaml` | Universal in Rust; needed for all config/cache/schema files |
+| **UUID** | `uuid` (v7) | Time-ordered UUIDs; monotonic within a millisecond; sortable |
+| **Crypto signing** | `ed25519-dalek` | Ed25519 as specified in SPEC §13 |
+| **Hashing** | `blake3` | Fast, parallelizable; used for content-addressing and dedup keys |
+| **Date/time** | `chrono` | Full timezone support; ISO 8601 parsing |
+| **Error handling** | `thiserror` + `anyhow` | `thiserror` for library errors; `anyhow` for application-level |
+| **Logging** | `tracing` | Structured logging with spans; async-aware |
+| **HTTP client** | `reqwest` | Async HTTP; needed for API ingestors and AI provider calls |
+| **Vector embeddings** | *(deferred to Phase 2)* | Options: sqlite-vss, qdrant-client, or custom HNSW |
+
+### 6.3 Cargo workspace structure
+
+The Rust code is organized as a Cargo workspace with one crate per Engine subsystem, plus a Framework crate and FFI bridge:
+
+```
+fracta/
+├── Cargo.toml                    # Workspace root
+├── crates/
+│   ├── fracta-vfs/               # Engine: file/folder CRUD, watching, atomic writes, scope
+│   ├── fracta-index/             # Engine: SQLite index + FTS5
+│   ├── fracta-query/             # Engine: filter/sort/group/aggregate
+│   ├── fracta-note/              # Engine: Markdown parser + block model
+│   ├── fracta-comm/              # Engine: IMAP/CalDAV/RSS/HTTP transports
+│   ├── fracta-sync/              # Engine: conflict resolution, multi-device
+│   ├── fracta-crypto/            # Engine: signing, hashing, key management
+│   ├── fracta-ai/                # Engine: LLM call interface, embeddings, prompts
+│   ├── fracta-platform/          # Engine: platform adapter trait definitions
+│   ├── fracta-framework/         # Framework: Primitives, Pipelines, Orchestrator
+│   └── fracta-ffi/               # UniFFI bridge: exposes Rust Core to Swift
+├── apple/
+│   └── Fracta/                   # Xcode project: SwiftUI app shell
+├── docs/                         # (existing documentation)
+└── tests/                        # Workspace-level integration tests
+```
+
+**Phase 1 active crates**: `fracta-vfs`, `fracta-index`, `fracta-note`, `fracta-ai`, `fracta-ffi`. Other crates have stub `lib.rs` files and will be developed in later phases.
+
+**Dependency rules** (enforced by crate boundaries):
+- Engine crates depend only on other Engine crates and external libraries.
+- `fracta-framework` depends on Engine crates.
+- `fracta-ffi` depends on everything it exposes to Swift.
+- No crate may have circular dependencies (enforced by Cargo).
+
+---
+
+## 7. Engineering conventions (initial)
 
 - **Atomic writes** everywhere for SOT/config/meta.
 - **Caches must be rebuildable**; never store irreplaceable truth only in SQLite or AI-derived caches.
@@ -280,3 +344,6 @@ Exports and chain-anchoring must filter by privacy level. Sensitive content is n
 - **Layer boundary**: Engine code must not import Framework types; Framework code must not import Application types (ADR-0010).
 - **AI outputs are files**: all AI-generated artifacts must be materialized as open-format files, not hidden in databases.
 - **Profile-configurable**: behavior constraints (like Quest Slots cap) are defined in Profile configs, not hard-coded.
+- **Error pattern**: Engine crates define typed errors with `thiserror`; application code uses `anyhow` for convenience.
+- **Logging**: Use `tracing` spans to track operations across async boundaries.
+- **Testing**: Each crate has unit tests; `tests/` directory has integration tests that span multiple crates.

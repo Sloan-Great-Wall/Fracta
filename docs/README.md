@@ -27,6 +27,7 @@ Fracta is a **local-first life operating system**:
 2. `docs/PRD.md` — scope, milestones, roadmap, and backlog (what to build)
 3. `docs/ENGINEERING.md` — architecture + implementation guidance (how to build)
 4. `docs/LIV_System_Manual.md` — the default execution methodology (Player Guide + System Spec)
+5. `docs/profiles/liv-profile-spec.md` — LIV Profile implementation spec (maps methodology → Fracta Primitives)
 
 ---
 
@@ -35,7 +36,8 @@ Fracta is a **local-first life operating system**:
 - **SPEC** answers: *Why? What is the system? What constraints must never break?*
 - **PRD** answers: *What are we building next? What's in/out? What are the milestones?*
 - **ENGINEERING** answers: *How does it work end-to-end and how do we implement it (architecture, pipelines, storage, security, conventions)?*
-- **LIV Manual** answers: *What is the default methodology and how does it work as a system?*
+- **LIV Manual** answers: *What is the default methodology and how does it work as a system?* (user-facing)
+- **LIV Profile Spec** answers: *How does LIV map to Fracta Primitives, Pipelines, and config?* (developer-facing)
 - **ADR** answers: *Why did we decide X (trade-offs, alternatives, consequences)?*
 
 ---
