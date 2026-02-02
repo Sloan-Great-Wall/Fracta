@@ -10,11 +10,28 @@ This document is the canonical **technical** reference (architecture + implement
 
 ## 1. High-level architecture
 
-### 1.1 One core, multiple shells
+### 1.1 Two models coexist
 
-Fracta uses **one shared core** and **multiple platform shells**:
+Fracta has two complementary architecture models:
 
-- **Rust Core (cross-platform)**: data model, indexing, search, query/view engine, event processing, cryptography/signing primitives, sync primitives.
+- **Conceptual architecture (ADR-0010)**: Engine / Framework / Application — three layers defining dependency rules and API boundaries.
+- **Implementation architecture (ADR-0003)**: Rust Core / Platform Shell — two code-organization units defining what language runs where.
+
+The Rust Core implements both the Engine and Framework layers (cross-platform logic). The Platform Shell implements Application UI and Platform Adapters (OS-specific code). UniFFI bridges the two.
+
+```
+Conceptual layers          Implementation
+─────────────────          ──────────────
+Application  ─────────→    Platform Shell (Swift/SwiftUI)
+Framework    ─────────→    Rust Core (via UniFFI)
+Engine       ─────────→    Rust Core + Platform Adapters
+```
+
+See SPEC §4 for the full three-layer specification.
+
+### 1.2 Rust Core + Platform Shells
+
+- **Rust Core (cross-platform)**: Engine subsystems (VFS, Index, Query, Note, Comm, Sync, Crypto Primitives, AI Primitives) + Framework components (Semantic Primitives, Pipelines, AI Orchestrator, Crypto/Token Engine, Knowledge Engine, Extension API).
 - **Platform Shell (platform-specific)**:
   - Apple: Swift + SwiftUI for UI, OS permissions, Keychain/Secure Enclave, Spotlight/QuickLook, Apple AI frameworks.
   - Future: Windows/Linux (Tauri or native), Android (Kotlin/Compose).
@@ -22,9 +39,9 @@ Fracta uses **one shared core** and **multiple platform shells**:
 
 Reference: `docs/adr/0003-core-architecture-rust-core-platform-shells.md`.
 
-### 1.2 Why AI lives in the shell (on Apple)
+### 1.3 Why AI lives in the shell (on Apple)
 
-On Apple platforms, Apple AI frameworks must be called from Swift. Rust should not depend on those APIs; instead, Rust defines interfaces and consumes results.
+On Apple platforms, Apple AI frameworks must be called from Swift. Rust should not depend on those APIs; instead, Rust defines interfaces (AI Primitives in Engine) and consumes results.
 
 ---
 
@@ -32,33 +49,54 @@ On Apple platforms, Apple AI frameworks must be called from Swift. Rust should n
 
 Fracta is file-based. The source of truth is user-readable content in normal folders:
 
-- **SOT**: Markdown/CSV/JSON + assets folders.
-- **Config**: schemas/views/ignore rules (text files; can be versioned).
-- **Cache**: indexes, materialized views, derived stats, vectors (safe to delete).
+- **SOT**: Markdown/CSV/JSON/ICS/EML/OPML + assets folders. Open formats only.
+- **Config**: schemas/views/ignore rules/Profile configs (text files in JSON/YAML; can be versioned).
+- **Cache**: indexes, materialized views, derived stats, vectors, AI-derived artifacts (safe to delete and rebuild).
 
-For each managed location, Fracta creates exactly one system folder:
+### 2.1 `.fracta/` directory layout
+
+For each managed Location, Fracta creates exactly one system folder:
 
 ```
 LocationRoot/
   .fracta/
     config/
-      ignore
-      settings.json
+      ignore                  # gitignore-like rules
+      settings.json           # Location-level settings
+      profile.json            # Active Profile config (e.g., LIV)
+      schemas/                # User/Profile-defined schemas
+      views/                  # Saved view configurations
     meta/
-      uids.jsonl
-      links.jsonl
+      uids.jsonl              # Lazy-assigned UIDs
+      links.jsonl             # Bidirectional links
     cache/
-      index.sqlite
-      fts/
-      vectors/
+      index.sqlite            # File index + metadata
+      fts/                    # Full-text search index
+      vectors/                # Vector embeddings
+      events/                 # AI-extracted structured events (JSONL per day)
+      summaries/              # AI-generated summaries (Markdown)
+      metrics/                # Aggregated metrics (JSON)
+      topics/                 # Topic maps, thought lineage (JSON)
+      ledger/                 # Local token ledger (JSON)
+      proofs/                 # Generated proof files
     state/
-      last_runs.json
+      last_runs.json          # Ingestor/pipeline run timestamps
+      ai_queue.json           # Pending AI tasks
 ```
 
-Notes:
+### 2.2 Storage contracts and Profiles
 
-- The concrete filenames are implementation details, but the **layering invariant** must hold (SPEC).
-- Writes must be atomic (temp file → rename) to survive cloud-sync/concurrency.
+The three-layer persistence model (SOT / Config / Cache) is **Framework-mandated**. What is mandated:
+
+- SOT must be in open formats (Markdown/CSV/JSON/ICS/EML/OPML).
+- Config must be in human-readable JSON/YAML.
+- Cache must be under `.fracta/cache/` and must be rebuildable.
+- All writes must be atomic (temp file → fsync → rename).
+
+What is **Profile-specific**: directory names within the user's Location, subfolder organization, naming conventions. For example:
+
+- LIV Profile uses `Lifelong_Vision/` (control plane), project folders (working directories), and `lifelong_story/` (archive).
+- A different Profile might organize these differently.
 
 References:
 
@@ -69,74 +107,85 @@ References:
 
 ## 3. Past subsystem (time journaling)
 
-Past is a pipeline:
+Past is a pipeline that turns multi-source activity into daily narrative stories. AI builds the timeline skeleton; the user fills in story, emotion, and reflection.
 
-1. Ingest events from multiple sources
-2. Normalize into a shared event model
-3. De-duplicate and merge
-4. Materialize daily folders (Markdown + CSV + assets)
-5. Build derived stats and summaries (optional AI)
+Reference: `docs/adr/0012-past-format-markdown-sot-ai-cache.md`.
 
-### 3.1 On-disk structure (human-readable)
+### 3.1 Pipeline stages
 
-Example:
+1. **Ingest** events from multiple sources (Platform + Core Ingestors)
+2. **Normalize** into a shared event model
+3. **De-duplicate and merge** using deterministic rules
+4. **AI constructs** timeline skeleton (structured events → Markdown draft)
+5. **User enriches** with narrative, emotion, reflection
+6. **Materialize** as daily Markdown file (SOT)
+7. **Extract** structured data into `.fracta/cache/events/` (JSONL)
+8. **Aggregate** metrics and generate AI summaries
+
+### 3.2 On-disk structure (human-readable SOT)
 
 ```
 My Drive/
   lifelong_story/
     2025/
       2025-10-01 — Travel prep/
-        2025-10-01 — Travel prep.md
-        events.csv
+        2025-10-01 — Travel prep.md    ← SOT (Markdown with YAML front matter)
         assets/
           cover.jpg
           thumb_001.jpg
 ```
 
-### 3.2 Story Markdown front matter (example)
+Note: There is no `events.csv` in the user's directory. Structured event data lives in `.fracta/cache/events/` and is AI-derived. Users who want CSV/JSON exports can use an explicit export function.
+
+### 3.3 Story Markdown front matter (example)
 
 ```yaml
 ---
 uid: "story_2025-10-01_9f2c1a"
 title: "2025-10-01 — Travel prep"
 date: "2025-10-01"
-status: archived            # active | archived
-area: lifelong_story        # database | now | past (conceptual grouping)
+status: archived            # draft | reviewed | archived
+area: past                  # library | now | past
 sources: [bilibili, youtube, chrome, healthkit]
 privacy: internal           # public | internal | sensitive
-files:
-  events_csv: "./events.csv"
-  assets_dir: "./assets/"
+mood: 7                     # 1-10, user-set emotional temperature
+assets_dir: "./assets/"
 summary:
-  ai: ""
-  manual: ""
+  ai: ""                    # AI-generated summary (cache-derived, user-approved)
+  manual: ""                # User-written summary
 metrics:
   focus_minutes: 0
   video_minutes: 120
   sleep_hours: 7.5
+  spending_cny: 234
 tags: [journal, travel, health]
 version: "1.0"
-deduplicated: true
 last_updated: "2025-10-01T22:30:00+08:00"
 ---
 ```
 
-### 3.3 `events.csv` schema (initial)
+Key changes from earlier design:
+- `area` field uses `library | now | past` (not the old "database" term).
+- `mood` field added for user emotional temperature.
+- `files.events_csv` removed — structured events are cache, not SOT.
+- `metrics.spending_*` fields support multi-currency.
 
-`events.csv` is the primary structured artifact for Past.
+### 3.4 Cached event schema (`.fracta/cache/events/`)
+
+Structured events extracted by AI live in `.fracta/cache/events/YYYY-MM-DD.jsonl`. Each line is a JSON object:
 
 | Field | Type | Meaning | Example |
 |---|---|---|---|
 | `event_id` | string | Unique event id | `bili_2025100112345` |
-| `platform` | string | Source system | `bilibili`, `youtube`, `chrome` |
-| `event_type` | string | Event kind | `video_watch`, `web_visit`, `sleep` |
-| `title` | string | Title | Video or page title |
+| `platform` | string | Source system | `bilibili`, `youtube`, `chrome`, `healthkit`, `manual` |
+| `event_type` | string | Event kind | `video_watch`, `web_visit`, `sleep`, `meal`, `exercise`, `work`, `travel` |
+| `title` | string | Title (UTF-8) | Video or page title |
 | `normalized_id` | string | Cross-run stable content id | `bili:BV1xx...` |
 | `link` | url | Original link | `https://...` |
 | `pic` | path | Relative asset path | `./assets/thumb_001.jpg` |
-| `desc` | string | Summary/description | `...` |
-| `start_datetime` | ISO8601 | Start time (with tz) | `2025-10-01T14:30:00+08:00` |
-| `end_datetime` | ISO8601 | End time (with tz) | `2025-10-01T15:15:00+08:00` |
+| `desc` | string | Summary/description (UTF-8) | `...` |
+| `start_datetime` | ISO8601 | Start time (with timezone) | `2025-10-01T14:30:00+08:00` |
+| `end_datetime` | ISO8601 | End time (with timezone) | `2025-10-01T15:15:00+08:00` |
 | `duration_seconds` | int | Duration in seconds | `2700` |
 | `progress_seconds` | int | Progress, `-1` = unknown | `1800` |
 | `device` | string | Device label | `MacBook Pro` |
@@ -148,7 +197,9 @@ last_updated: "2025-10-01T22:30:00+08:00"
 | `merged_from` | json array | Source event ids merged into this | `["...","..."]` |
 | `quality_score` | float | Quality score | `1.0` |
 
-### 3.4 De-duplication and merging (deterministic)
+Note: This schema is preliminary. The `event_type` and `platform` fields will have defined enum values during implementation. All string fields are UTF-8. Datetime fields should always include timezone information.
+
+### 3.5 De-duplication and merging (deterministic)
 
 Initial rules:
 
@@ -172,11 +223,18 @@ Quality priority guideline:
 
 | Source | Approach | Notes |
 |---|---|---|
+| Manual input | User writes in Markdown | Always available; highest priority |
 | Bilibili history | WebView cookie capture → official APIs | Cookies expire; refresh flow required |
 | YouTube history | OAuth → YouTube Data API | Progress is often unavailable; set `progress_seconds = -1` |
 | Chrome history | User-authorized copy of History DB → parse | Avoid fragile automation |
 | Safari history | Safari Extension (optional) | Higher complexity under sandboxing |
 | HealthKit | HealthKit framework | Steps/sleep/workouts; privacy-sensitive |
+| Calendar | CalDAV / ICS import | Schedule events as timeline entries |
+
+Ingestors are split by responsibility (ADR-0004):
+
+- **Platform ingestors** (Shell): handle OS permissions, WebView/OAuth flows, and secure credential storage.
+- **Core ingestors** (Rust): handle cross-platform fetching/parsing/normalization and quality scoring.
 
 Reference: `docs/adr/0004-ingestion-strategy-platform-core-ingestors.md`.
 
@@ -203,20 +261,22 @@ Use a small, explicit set of privacy labels:
 
 ```swift
 enum PrivacyLevel: String {
-    case public
-    case internal
+    case public_
+    case internal_
     case sensitive
 }
 ```
 
-Exports must filter by privacy level.
+Exports and chain-anchoring must filter by privacy level. Sensitive content is never published or uploaded.
 
 ---
 
 ## 6. Engineering conventions (initial)
 
 - **Atomic writes** everywhere for SOT/config/meta.
-- **Caches must be rebuildable**; never store irreplaceable truth only in SQLite.
+- **Caches must be rebuildable**; never store irreplaceable truth only in SQLite or AI-derived caches.
 - **Lazy UID**: do not assign IDs until necessary (ADR-0005).
 - **Docs are English-only** (ADR-0009).
-
+- **Layer boundary**: Engine code must not import Framework types; Framework code must not import Application types (ADR-0010).
+- **AI outputs are files**: all AI-generated artifacts must be materialized as open-format files, not hidden in databases.
+- **Profile-configurable**: behavior constraints (like Quest Slots cap) are defined in Profile configs, not hard-coded.

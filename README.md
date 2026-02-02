@@ -1,13 +1,13 @@
 # Fracta
 
-A **local-first personal data workbench**: manage files like Finder, organize with database-like views, use AI to move projects forward and produce reviews/archives, and optionally support cryptographic / blockchain proofs for attribution and incentives.
+A **local-first life operating system**: a modular personal data workbench with a file/note/communication engine, a semantic framework for Library/Now/Past, and an application layer for methodologies (LIV), AI copilots, crypto incentives, and third-party integrations — all on open formats, without vendor lock-in.
 
 This repository is currently in the **software definition / design phase** (docs-only; no implementation code yet).
 
 ## Documentation (start here)
 
 - [Docs entrypoint (`docs/README.md`)](./docs/README.md)
-- [System specification (canonical) (`docs/SPEC.md`)](./docs/SPEC.md)
-- [Product scope (canonical) (`docs/PRD.md`)](./docs/PRD.md)
-- [Engineering (canonical) (`docs/ENGINEERING.md`)](./docs/ENGINEERING.md)
-
+- [System specification (`docs/SPEC.md`)](./docs/SPEC.md) — what must not break
+- [Product roadmap (`docs/PRD.md`)](./docs/PRD.md) — what to build next
+- [Engineering (`docs/ENGINEERING.md`)](./docs/ENGINEERING.md) — how to build it
+- [LIV System Manual (`docs/LIV_System_Manual.md`)](./docs/LIV_System_Manual.md) — default execution methodology
