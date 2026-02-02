@@ -1,0 +1,11 @@
+[package]
+name = "fracta-crypto"
+description = "Fracta Engine: Crypto primitives — Ed25519 signing, Blake3 hashing, key management"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }
+ed25519-dalek = { workspace = true }
+blake3 = { workspace = true }

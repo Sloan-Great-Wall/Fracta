@@ -1,0 +1,9 @@
+[package]
+name = "fracta-platform"
+description = "Fracta Engine: Platform adapter traits — OS-specific abstractions"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }

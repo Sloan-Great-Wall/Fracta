@@ -1,0 +1,10 @@
+[package]
+name = "fracta-ffi"
+description = "Fracta UniFFI bridge: exposes Rust Core APIs to platform shells (Swift/Kotlin)"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+fracta-vfs = { workspace = true }
+fracta-framework = { workspace = true }
+thiserror = { workspace = true }

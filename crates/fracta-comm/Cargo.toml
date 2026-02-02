@@ -1,0 +1,11 @@
+[package]
+name = "fracta-comm"
+description = "Fracta Engine: Communication protocols — IMAP, CalDAV, RSS, HTTP"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+reqwest = { workspace = true }

@@ -1,0 +1,22 @@
+[package]
+name = "fracta-framework"
+description = "Fracta Framework: Semantic Primitives, Pipelines, AI Orchestrator, Knowledge Engine"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+fracta-vfs = { workspace = true }
+fracta-index = { workspace = true }
+fracta-query = { workspace = true }
+fracta-note = { workspace = true }
+fracta-ai = { workspace = true }
+fracta-crypto = { workspace = true }
+fracta-platform = { workspace = true }

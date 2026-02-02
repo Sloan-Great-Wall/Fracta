@@ -1,0 +1,10 @@
+[package]
+name = "fracta-query"
+description = "Fracta Engine: Query engine — filter, sort, group, aggregate"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }

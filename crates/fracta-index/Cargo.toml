@@ -1,0 +1,14 @@
+[package]
+name = "fracta-index"
+description = "Fracta Engine: SQLite index + FTS5 — incremental indexing and full-text search"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+rusqlite = { workspace = true }
+fracta-vfs = { workspace = true }

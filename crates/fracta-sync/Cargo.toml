@@ -1,0 +1,9 @@
+[package]
+name = "fracta-sync"
+description = "Fracta Engine: Sync — conflict resolution, cloud-drive awareness, multi-device"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+thiserror = { workspace = true }

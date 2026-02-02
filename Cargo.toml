@@ -1,0 +1,77 @@
+[workspace]
+members = [
+    "crates/fracta-vfs",
+    "crates/fracta-index",
+    "crates/fracta-query",
+    "crates/fracta-note",
+    "crates/fracta-comm",
+    "crates/fracta-sync",
+    "crates/fracta-crypto",
+    "crates/fracta-ai",
+    "crates/fracta-platform",
+    "crates/fracta-framework",
+    "crates/fracta-ffi",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Sloan-Great-Wall/Fracta"
+
+# Shared dependency versions — crates use `workspace = true` to inherit
+[workspace.dependencies]
+# Async
+tokio = { version = "1", features = ["full"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
+
+# UUID
+uuid = { version = "1", features = ["v7", "serde"] }
+
+# Database
+rusqlite = { version = "0.32", features = ["bundled", "modern_sqlite"] }
+
+# File watching
+notify = "7"
+notify-debouncer-mini = "0.5"
+
+# Markdown (GFM superset — tables, task lists, strikethrough, footnotes; full mutable AST)
+comrak = "0.36"
+
+# Crypto
+ed25519-dalek = { version = "2", features = ["serde"] }
+blake3 = "1"
+
+# HTTP
+reqwest = { version = "0.12", features = ["json"] }
+
+# Paths
+tempfile = "3"
+
+# Internal crates
+fracta-vfs = { path = "crates/fracta-vfs" }
+fracta-index = { path = "crates/fracta-index" }
+fracta-query = { path = "crates/fracta-query" }
+fracta-note = { path = "crates/fracta-note" }
+fracta-comm = { path = "crates/fracta-comm" }
+fracta-sync = { path = "crates/fracta-sync" }
+fracta-crypto = { path = "crates/fracta-crypto" }
+fracta-ai = { path = "crates/fracta-ai" }
+fracta-platform = { path = "crates/fracta-platform" }
+fracta-framework = { path = "crates/fracta-framework" }

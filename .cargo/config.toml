@@ -1,0 +1,11 @@
+# Ensure Cargo can find the macOS SDK, C compiler, archiver, and linker.
+# Needed when xcode-select points to CommandLineTools
+# and the tools aren't in the default PATH.
+
+[env]
+SDKROOT = "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk"
+CC = "/Library/Developer/CommandLineTools/usr/bin/cc"
+AR = "/Library/Developer/CommandLineTools/usr/bin/ar"
+
+[target.aarch64-apple-darwin]
+linker = "/Library/Developer/CommandLineTools/usr/bin/cc"

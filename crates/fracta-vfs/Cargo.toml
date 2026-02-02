@@ -1,0 +1,20 @@
+[package]
+name = "fracta-vfs"
+description = "Fracta Engine: Virtual File System — file/folder CRUD, watching, atomic writes, managed scope"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+notify = { workspace = true }
+notify-debouncer-mini = { workspace = true }
+tempfile = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
