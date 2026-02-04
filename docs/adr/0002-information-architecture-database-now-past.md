@@ -1,5 +1,9 @@
 # ADR-0002: Information architecture uses Database / Now / Past
 
+## Status
+
+Superseded (terminology) by ADR-0014. The three-area architecture remains, but the canonical naming is now **Library / Now / Past**.
+
 ## Context
 
 We need a long-lived mental model that can simultaneously support:

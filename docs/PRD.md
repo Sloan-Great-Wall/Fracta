@@ -26,7 +26,16 @@ Fracta is a **local-first life operating system**: a modular personal data workb
 - **AI-native**: AI automates mechanical work and surfaces creative insights across every layer.
 - **Open infrastructure**: Engine + Framework are open-source; users never fear lock-in.
 
-### 1.2 Initial success metrics (draft)
+### 1.2 Product pillars (taste constraints)
+
+These pillars are evaluated on the **key path** (first 10 seconds → first successful session), not on edge features:
+
+- **Trust**: clear boundaries, explainable writes, privacy by default.
+- **Instant**: fast launch, fast navigation, fast search; no UI thread blocking.
+- **Coherent**: one mental model (Locations + scope), consistent terminology and states.
+- **Delight**: small wins (preview, shortcuts, smoothness) without gimmicks.
+
+### 1.3 Initial success metrics (draft)
 
 - Weekly active usage: users open Fracta ≥ 3 times/week (Past dashboard and/or Now projects).
 - Behavior: at least one Now project maintained + one Past review per week.
@@ -194,6 +203,22 @@ Milestones are user-visible deliverables that combine work across phases and tra
 - Index and search work on a managed Location.
 - AI can be called (LLM interface functional).
 - No semantic features yet — this is "a better Finder that can talk to AI".
+
+**Acceptance criteria (Definition of Done)**
+
+- A new user can complete the key path end-to-end:
+  - grant access to a Location → enable **Managed** → browse folders/files → preview/render Markdown → edit and save a Markdown file (atomic write) → search finds the content.
+- The UI can explain scope states and boundaries:
+  - **Managed / Ignored / Plain** (or a simplified "Managed / Unmanaged" with reasons).
+  - No indexing or Fracta-managed writes occur outside Managed scope.
+- Indexing is correct and resilient:
+  - initial index build works on a managed Location,
+  - incremental updates occur after filesystem changes (watch + debounce + re-index),
+  - cache can be deleted and rebuilt without data loss (filesystem remains SOT).
+- Performance meets Phase-appropriate floors (from §1.3, measured on a representative dataset).
+- Apple platform reality is respected (Phase 1 scope):
+  - Location access is permissioned and persistent (security-scoped access on Apple platforms).
+  - The key path stays responsive (no UI thread blocking during indexing/search).
 
 **Milestone 0.2: Past Insight Dashboard** (Phase 2, Past track)
 

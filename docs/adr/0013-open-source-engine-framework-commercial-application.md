@@ -65,7 +65,7 @@ Even if you stop paying (or Fracta disappears):
 ## Consequences
 
 - The codebase must maintain a clean boundary between open (Engine + Framework) and commercial (Application) code.
-- Open-source licensing must be chosen carefully (likely MPL-2.0 or similar copyleft-lite for Engine/Framework, proprietary for Application).
+- Open-source licensing must be chosen carefully (**TBD**). Selection criteria should include: ecosystem friendliness, contribution incentives, protection against closed-source competitors, and a clean legal boundary to the commercial Application layer. The final choice will be captured in a follow-up ADR; the current `Cargo.toml` license field is a provisional placeholder until that decision is made.
 - The Extension API is the critical interface: it must be stable, documented, and powerful enough that third-party Application layers are viable.
 - Marketing must clearly communicate the three-level openness to build user trust.
 - The Creator Marketplace becomes a key revenue driver and must be designed into the Framework from the start (not bolted on later).

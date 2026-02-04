@@ -1,6 +1,6 @@
 # Fracta Documentation
 
-This repository is currently in the **software definition / design phase**.
+**Status**: transitioning from **Phase 0 (definition)** into **Phase 1 (engineering)**. The docs in `docs/` remain canonical; implementation is an early Rust workspace scaffold.
 
 **Policy**
 - All documentation under `docs/` (including ADRs) is **English-only**.
@@ -42,12 +42,21 @@ Fracta is a **local-first life operating system**:
 
 ---
 
+## External narrative (non-canonical)
+
+For user/launch narrative, see `INTRODUCTION.md` at the repo root.
+
+Hard rule: do not duplicate or contradict the canonical truth in `docs/`. Link to `docs/` instead.
+
+---
+
 ## ADRs (Architecture Decision Records)
 
 Directory: `docs/adr/`
 
 Key ADRs:
-- `0002` — Information architecture: Library / Now / Past
+- `0002` — Information architecture: three areas (see `0014` for naming)
+- `0014` — Terminology: rename **Database → Library**
 - `0003` — Core architecture: Rust Core + Platform Shells
 - `0010` — **Three-layer architecture: Engine / Framework / Application**
 - `0011` — **LIV as default Application Profile**

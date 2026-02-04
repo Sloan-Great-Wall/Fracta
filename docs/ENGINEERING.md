@@ -63,7 +63,9 @@ LocationRoot/
     config/
       ignore                  # gitignore-like rules
       settings.json           # Location-level settings
-      profile.json            # Active Profile config (e.g., LIV)
+      profile.json            # Active Profile pointer + user overrides (small, frequently changed)
+      profiles/               # Installed Profile packages (versioned; marketplace-ready)
+        liv.json              # Example: LIV Profile package
       schemas/                # User/Profile-defined schemas
       views/                  # Saved view configurations
     meta/
@@ -269,6 +271,17 @@ enum PrivacyLevel: String {
 
 Exports and chain-anchoring must filter by privacy level. Sensitive content is never published or uploaded.
 
+### 5.3 VFS path safety (recommended: capability-based)
+
+VFS is the trust boundary for "file system as SOT". To prevent path-escape and symlink bypass issues, prefer a **capability-based** design:
+
+- Treat the Location root as a capability (`LocationHandle` / `DirHandle`), not a string path.
+- Perform all file operations **relative to** that handle (no raw absolute paths crossing layers).
+- Enforce "no escape" at the boundary (reject `..` traversal and any resolved path that leaves the Location).
+- Decide and document symlink policy explicitly (default: do not allow symlinks to escape a Location).
+
+This improves security, makes behavior explainable, and reduces edge-case bugs on Apple sandboxed filesystems.
+
 ---
 
 ## 6. Technology selections
@@ -303,6 +316,8 @@ Exports and chain-anchoring must filter by privacy level. Sensitive content is n
 ### 6.3 Cargo workspace structure
 
 The Rust code is organized as a Cargo workspace with one crate per Engine subsystem, plus a Framework crate and FFI bridge:
+
+**Note**: The tree below is the **intended repository layout**. In the current repo snapshot, `docs/` and the Rust `crates/` workspace exist; `apple/` (platform shell) and workspace-level `tests/` are planned but not yet added.
 
 ```
 fracta/
@@ -346,4 +361,29 @@ fracta/
 - **Profile-configurable**: behavior constraints (like Quest Slots cap) are defined in Profile configs, not hard-coded.
 - **Error pattern**: Engine crates define typed errors with `thiserror`; application code uses `anyhow` for convenience.
 - **Logging**: Use `tracing` spans to track operations across async boundaries.
-- **Testing**: Each crate has unit tests; `tests/` directory has integration tests that span multiple crates.
+- **Testing**: Each crate has unit tests; workspace-level integration tests live under `tests/` (planned).
+
+---
+
+## 8. Execution system readiness (Phase 1)
+
+Implementation is fast (especially with AI). Preventing drift and regressions is the hard part. Phase 1 should establish a small set of non-negotiable execution gates:
+
+### 8.1 Reproducible toolchain
+
+- Pin the Rust toolchain (`rust-toolchain.toml`) so builds are reproducible.
+- Updating the pinned version is allowed, but must be **intentional** (update file + run fmt/clippy/tests + note in PR/ADR if it affects APIs).
+- Keep `.cargo/config.toml` **CI-safe**: avoid global `[env]` overrides that hardcode macOS SDK paths. If a macOS developer needs `SDKROOT`/`CC`/`AR`, set them locally (shell env), not as a cross-platform repo default.
+
+### 8.2 Required CI checks (minimum)
+
+On every change:
+- `cargo fmt --check`
+- `cargo clippy --workspace --all-targets -- -D warnings`
+- `cargo test --workspace`
+
+### 8.3 Drift control
+
+- Root `README.md` must remain a **thin pointer** and must not contradict `docs/`.
+- Canonical truth lives in `docs/` (SPEC/PRD/ENGINEERING/ADR). External docs (`press/`, `manual/`) may not duplicate it.
+- Any "planned repo structure" diagrams must be labeled **planned vs current** to avoid contributor confusion.
