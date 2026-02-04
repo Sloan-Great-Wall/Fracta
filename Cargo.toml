@@ -61,6 +61,9 @@ blake3 = "1"
 # HTTP
 reqwest = { version = "0.12", features = ["json"] }
 
+# Glob pattern matching (gitignore-style rules)
+globset = "0.4"
+
 # Paths
 tempfile = "3"
 

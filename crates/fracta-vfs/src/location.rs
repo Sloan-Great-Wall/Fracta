@@ -8,6 +8,7 @@
 //! - Registering and tracking Locations
 //! - Determining Scope (Managed/Ignored/Plain) for any path
 //! - Providing CRUD operations scoped to Locations
+//! - Recursive directory traversal with scope filtering
 
 use std::path::{Path, PathBuf};
 
@@ -17,7 +18,13 @@ use uuid::Uuid;
 
 use crate::entry::{Entry, EntryKind};
 use crate::error::{VfsError, VfsResult};
+use crate::ignore::IgnoreRules;
+use crate::init::init_fracta_dir;
 use crate::scope::Scope;
+use crate::writer::atomic_write;
+
+/// The `.fracta/` directory name within a managed Location.
+pub const FRACTA_DIR: &str = ".fracta";
 
 /// A user-granted directory tree that Fracta manages.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,22 +40,88 @@ pub struct Location {
 
     /// Whether the compute layer is enabled for this Location.
     pub managed: bool,
+
+    /// Ignore rules loaded from `.fracta/config/ignore`.
+    /// Skipped during serialization — reload after deserializing.
+    #[serde(skip)]
+    ignore_rules: IgnoreRules,
 }
 
-/// The `.fracta/` directory name within a managed Location.
-pub const FRACTA_DIR: &str = ".fracta";
+/// Options for recursive directory traversal.
+#[derive(Debug, Clone)]
+pub struct WalkOptions {
+    /// Include entries with Ignored scope in results.
+    /// When false, ignored directories are not recursed into.
+    pub include_ignored: bool,
+
+    /// Maximum recursion depth (None = unlimited).
+    pub max_depth: Option<usize>,
+}
+
+impl Default for WalkOptions {
+    fn default() -> Self {
+        Self {
+            include_ignored: false,
+            max_depth: None,
+        }
+    }
+}
+
+// ── Constructors ───────────────────────────────────────────────────────
 
 impl Location {
-    /// Create a new Location from a root path.
+    /// Create a new (unmanaged) Location. Does not touch the filesystem.
     pub fn new(label: impl Into<String>, root: impl Into<PathBuf>) -> Self {
         Self {
             id: Uuid::now_v7(),
             label: label.into(),
             root: root.into(),
             managed: false,
+            ignore_rules: IgnoreRules::empty(),
         }
     }
 
+    /// Open an existing managed Location, loading ignore rules from disk.
+    ///
+    /// Falls back to default ignore rules if `.fracta/config/ignore` is missing.
+    pub fn open(label: impl Into<String>, root: impl Into<PathBuf>) -> VfsResult<Self> {
+        let root = root.into();
+        if !root.is_dir() {
+            return Err(VfsError::NotFound(root));
+        }
+
+        let ignore_path = root.join(FRACTA_DIR).join("config").join("ignore");
+        let ignore_rules = IgnoreRules::load(&ignore_path).unwrap_or_default();
+
+        Ok(Self {
+            id: Uuid::now_v7(),
+            label: label.into(),
+            root,
+            managed: true,
+            ignore_rules,
+        })
+    }
+
+    /// Initialize this Location: create `.fracta/` structure and mark as managed.
+    pub fn init(&mut self) -> VfsResult<()> {
+        init_fracta_dir(&self.root)?;
+        self.managed = true;
+        self.reload_ignore_rules()?;
+        Ok(())
+    }
+
+    /// Reload ignore rules from disk.
+    pub fn reload_ignore_rules(&mut self) -> VfsResult<()> {
+        let ignore_path = self.root.join(FRACTA_DIR).join("config").join("ignore");
+        self.ignore_rules = IgnoreRules::load(&ignore_path)
+            .map_err(|e| VfsError::Io { source: e })?;
+        Ok(())
+    }
+}
+
+// ── Path queries ───────────────────────────────────────────────────────
+
+impl Location {
     /// Path to the `.fracta/` system directory for this Location.
     pub fn fracta_dir(&self) -> PathBuf {
         self.root.join(FRACTA_DIR)
@@ -57,6 +130,11 @@ impl Location {
     /// Whether a given path is inside this Location.
     pub fn contains(&self, path: &Path) -> bool {
         path.starts_with(&self.root)
+    }
+
+    /// Get the relative path from Location root.
+    fn relative_path(&self, path: &Path) -> Option<PathBuf> {
+        path.strip_prefix(&self.root).ok().map(PathBuf::from)
     }
 
     /// Determine the scope of a path within this Location.
@@ -71,13 +149,29 @@ impl Location {
             return Some(Scope::Plain);
         }
 
-        // TODO: Check ignore rules from `.fracta/config/ignore`
-        // For now, everything in a managed Location is Managed
-        // (except the .fracta directory itself, which is always Managed/internal).
+        let rel_path = match self.relative_path(path) {
+            Some(p) if p.as_os_str().is_empty() => return Some(Scope::Managed),
+            Some(p) => p,
+            None => return Some(Scope::Managed),
+        };
 
-        Some(Scope::Managed)
+        // .fracta/ itself is always Managed (internal system directory)
+        if rel_path.starts_with(FRACTA_DIR) {
+            return Some(Scope::Managed);
+        }
+
+        let is_dir = path.is_dir();
+        if self.ignore_rules.is_ignored(&rel_path, is_dir) {
+            Some(Scope::Ignored)
+        } else {
+            Some(Scope::Managed)
+        }
     }
+}
 
+// ── Directory listing & walking ────────────────────────────────────────
+
+impl Location {
     /// List the immediate children of a directory within this Location.
     pub fn list_directory(&self, dir: &Path) -> VfsResult<Vec<Entry>> {
         if !self.contains(dir) {
@@ -96,8 +190,6 @@ impl Location {
 
         for dir_entry in read_dir {
             let dir_entry = dir_entry?;
-            let metadata = dir_entry.metadata()?;
-            let path = dir_entry.path();
             let name = dir_entry.file_name().to_string_lossy().into_owned();
 
             // Skip .fracta directory in listings (internal system dir)
@@ -105,34 +197,10 @@ impl Location {
                 continue;
             }
 
-            let kind = if metadata.is_dir() {
-                EntryKind::Folder
-            } else {
-                EntryKind::File
-            };
-
-            let extension = if kind == EntryKind::File {
-                path.extension()
-                    .map(|e| e.to_string_lossy().to_lowercase())
-            } else {
-                None
-            };
-
-            let scope = self.scope_of(&path).unwrap_or(Scope::Plain);
-
-            entries.push(Entry {
-                path,
-                kind,
-                name,
-                extension,
-                size: metadata.len(),
-                modified: metadata.modified().ok().map(DateTime::from).unwrap_or_default(),
-                created: metadata.created().ok().map(DateTime::from),
-                scope,
-            });
+            entries.push(self.build_entry(&dir_entry.path(), &dir_entry.metadata()?));
         }
 
-        // Sort: folders first, then alphabetical
+        // Sort: folders first, then alphabetical (case-insensitive)
         entries.sort_by(|a, b| {
             match (&a.kind, &b.kind) {
                 (EntryKind::Folder, EntryKind::File) => std::cmp::Ordering::Less,
@@ -142,6 +210,110 @@ impl Location {
         });
 
         Ok(entries)
+    }
+
+    /// Recursively walk the directory tree starting from `dir`.
+    ///
+    /// Returns a flat list of all entries. Use `WalkOptions` to control
+    /// whether ignored entries are included and maximum depth.
+    pub fn walk(&self, dir: &Path, options: &WalkOptions) -> VfsResult<Vec<Entry>> {
+        if !self.contains(dir) {
+            return Err(VfsError::OutsideLocation(dir.to_path_buf()));
+        }
+
+        let mut results = Vec::new();
+        self.walk_recursive(dir, options, 0, &mut results)?;
+        Ok(results)
+    }
+
+    fn walk_recursive(
+        &self,
+        dir: &Path,
+        options: &WalkOptions,
+        depth: usize,
+        results: &mut Vec<Entry>,
+    ) -> VfsResult<()> {
+        if let Some(max) = options.max_depth {
+            if depth >= max {
+                return Ok(());
+            }
+        }
+
+        let read_dir = std::fs::read_dir(dir).map_err(|e| match e.kind() {
+            std::io::ErrorKind::NotFound => VfsError::NotFound(dir.to_path_buf()),
+            std::io::ErrorKind::PermissionDenied => {
+                VfsError::PermissionDenied(dir.to_path_buf())
+            }
+            _ => VfsError::Io { source: e },
+        })?;
+
+        for dir_entry in read_dir {
+            let dir_entry = dir_entry?;
+            let path = dir_entry.path();
+            let name = dir_entry.file_name().to_string_lossy().into_owned();
+
+            // Always skip .fracta directory
+            if name == FRACTA_DIR {
+                continue;
+            }
+
+            let entry = self.build_entry(&path, &dir_entry.metadata()?);
+
+            // Skip ignored entries unless explicitly requested
+            if entry.scope == Scope::Ignored && !options.include_ignored {
+                continue;
+            }
+
+            let should_recurse = entry.kind == EntryKind::Folder;
+            results.push(entry);
+
+            if should_recurse {
+                self.walk_recursive(&path, options, depth + 1, results)?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
+// ── CRUD operations ────────────────────────────────────────────────────
+
+impl Location {
+    /// Create a new file with the given content (atomic write).
+    pub fn create_file(&self, path: &Path, content: &[u8]) -> VfsResult<()> {
+        self.check_writable(path)?;
+        if path.exists() {
+            return Err(VfsError::AlreadyExists(path.to_path_buf()));
+        }
+        if let Some(parent) = path.parent() {
+            if !parent.exists() {
+                return Err(VfsError::NotFound(parent.to_path_buf()));
+            }
+        }
+        atomic_write(path, content)
+    }
+
+    /// Create a new directory.
+    pub fn create_folder(&self, path: &Path) -> VfsResult<()> {
+        self.check_writable(path)?;
+        if path.exists() {
+            return Err(VfsError::AlreadyExists(path.to_path_buf()));
+        }
+        std::fs::create_dir(path).map_err(|e| match e.kind() {
+            std::io::ErrorKind::PermissionDenied => {
+                VfsError::PermissionDenied(path.to_path_buf())
+            }
+            _ => VfsError::Io { source: e },
+        })
+    }
+
+    /// Write content to an existing file (atomic overwrite).
+    pub fn write_file(&self, path: &Path, content: &[u8]) -> VfsResult<()> {
+        self.check_writable(path)?;
+        if !path.exists() {
+            return Err(VfsError::NotFound(path.to_path_buf()));
+        }
+        atomic_write(path, content)
     }
 
     /// Read a file's contents as bytes.
@@ -168,12 +340,137 @@ impl Location {
             ),
         })
     }
+
+    /// Rename a file or folder (stays in the same parent directory).
+    pub fn rename(&self, from: &Path, to: &Path) -> VfsResult<()> {
+        self.check_writable(from)?;
+        self.check_writable(to)?;
+        if !from.exists() {
+            return Err(VfsError::NotFound(from.to_path_buf()));
+        }
+        if to.exists() {
+            return Err(VfsError::AlreadyExists(to.to_path_buf()));
+        }
+        std::fs::rename(from, to).map_err(|e| VfsError::Io { source: e })
+    }
+
+    /// Move a file or folder to a different directory. Returns the new path.
+    pub fn move_entry(&self, from: &Path, to_dir: &Path) -> VfsResult<PathBuf> {
+        self.check_writable(from)?;
+        if !self.contains(to_dir) {
+            return Err(VfsError::OutsideLocation(to_dir.to_path_buf()));
+        }
+        if !from.exists() {
+            return Err(VfsError::NotFound(from.to_path_buf()));
+        }
+        if !to_dir.is_dir() {
+            return Err(VfsError::NotFound(to_dir.to_path_buf()));
+        }
+
+        let file_name = from.file_name().ok_or_else(|| VfsError::Io {
+            source: std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "path has no file name",
+            ),
+        })?;
+        let dest = to_dir.join(file_name);
+
+        if dest.exists() {
+            return Err(VfsError::AlreadyExists(dest));
+        }
+
+        self.check_writable(&dest)?;
+        std::fs::rename(from, &dest).map_err(|e| VfsError::Io { source: e })?;
+        Ok(dest)
+    }
+
+    /// Delete a file.
+    pub fn delete_file(&self, path: &Path) -> VfsResult<()> {
+        self.check_writable(path)?;
+        if !path.exists() {
+            return Err(VfsError::NotFound(path.to_path_buf()));
+        }
+        std::fs::remove_file(path).map_err(|e| match e.kind() {
+            std::io::ErrorKind::PermissionDenied => {
+                VfsError::PermissionDenied(path.to_path_buf())
+            }
+            _ => VfsError::Io { source: e },
+        })
+    }
+
+    /// Delete a folder and all its contents.
+    pub fn delete_folder(&self, path: &Path) -> VfsResult<()> {
+        self.check_writable(path)?;
+        if !path.exists() {
+            return Err(VfsError::NotFound(path.to_path_buf()));
+        }
+        std::fs::remove_dir_all(path).map_err(|e| match e.kind() {
+            std::io::ErrorKind::PermissionDenied => {
+                VfsError::PermissionDenied(path.to_path_buf())
+            }
+            _ => VfsError::Io { source: e },
+        })
+    }
+}
+
+// ── Internal helpers ───────────────────────────────────────────────────
+
+impl Location {
+    /// Build an Entry from a path and its filesystem metadata.
+    fn build_entry(&self, path: &Path, metadata: &std::fs::Metadata) -> Entry {
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+
+        let kind = if metadata.is_dir() {
+            EntryKind::Folder
+        } else {
+            EntryKind::File
+        };
+
+        let extension = if kind == EntryKind::File {
+            path.extension()
+                .map(|e| e.to_string_lossy().to_lowercase())
+        } else {
+            None
+        };
+
+        let scope = self.scope_of(path).unwrap_or(Scope::Plain);
+
+        Entry {
+            path: path.to_path_buf(),
+            kind,
+            name,
+            extension,
+            size: metadata.len(),
+            modified: metadata.modified().ok().map(DateTime::from).unwrap_or_default(),
+            created: metadata.created().ok().map(DateTime::from),
+            scope,
+        }
+    }
+
+    /// Check that a path is within this Location and not inside `.fracta/`.
+    fn check_writable(&self, path: &Path) -> VfsResult<()> {
+        if !self.contains(path) {
+            return Err(VfsError::OutsideLocation(path.to_path_buf()));
+        }
+        // Prevent CRUD operations inside .fracta/ (use init/writer directly for that)
+        if let Some(rel) = self.relative_path(path) {
+            if rel.starts_with(FRACTA_DIR) {
+                return Err(VfsError::PermissionDenied(path.to_path_buf()));
+            }
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    // ── Basic Location tests ───────────────────────────────────────────
 
     #[test]
     fn test_location_contains() {
@@ -187,7 +484,6 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let root = tmp.path().to_path_buf();
 
-        // Create some test files and folders
         std::fs::create_dir(root.join("folder_a")).unwrap();
         std::fs::create_dir(root.join("folder_b")).unwrap();
         std::fs::write(root.join("notes.md"), "# Hello").unwrap();
@@ -198,14 +494,11 @@ mod tests {
             label: "test".into(),
             root: root.clone(),
             managed: true,
+            ignore_rules: IgnoreRules::empty(),
         };
 
         let entries = loc.list_directory(&root).unwrap();
-
-        // Should have 4 entries (2 folders + 2 files)
         assert_eq!(entries.len(), 4);
-
-        // Folders should come first
         assert_eq!(entries[0].kind, EntryKind::Folder);
         assert_eq!(entries[1].kind, EntryKind::Folder);
         assert_eq!(entries[2].kind, EntryKind::File);
@@ -217,7 +510,6 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let root = tmp.path().to_path_buf();
 
-        // Create .fracta directory (should be hidden from listings)
         std::fs::create_dir(root.join(".fracta")).unwrap();
         std::fs::write(root.join("visible.md"), "hello").unwrap();
 
@@ -226,12 +518,305 @@ mod tests {
             label: "test".into(),
             root: root.clone(),
             managed: true,
+            ignore_rules: IgnoreRules::empty(),
         };
 
         let entries = loc.list_directory(&root).unwrap();
-
-        // .fracta should be hidden
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].name, "visible.md");
+    }
+
+    // ── Init + ignore rules tests ──────────────────────────────────────
+
+    #[test]
+    fn test_init_and_open() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+
+        // Init a new Location
+        let mut loc = Location::new("test", &root);
+        loc.init().unwrap();
+        assert!(loc.managed);
+        assert!(root.join(".fracta/config/ignore").exists());
+
+        // Open the same Location
+        let loc2 = Location::open("test", &root).unwrap();
+        assert!(loc2.managed);
+
+        // Default ignore rules should work
+        std::fs::create_dir(root.join(".git")).unwrap();
+        assert_eq!(loc2.scope_of(&root.join(".git")), Some(Scope::Ignored));
+    }
+
+    #[test]
+    fn test_scope_with_ignore_rules() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+
+        let mut loc = Location::new("test", &root);
+        loc.init().unwrap();
+
+        // Create test files
+        std::fs::write(root.join("readme.md"), "hi").unwrap();
+        std::fs::create_dir(root.join("node_modules")).unwrap();
+        std::fs::write(root.join(".DS_Store"), "").unwrap();
+
+        // readme.md → Managed
+        assert_eq!(loc.scope_of(&root.join("readme.md")), Some(Scope::Managed));
+        // node_modules/ → Ignored
+        assert_eq!(loc.scope_of(&root.join("node_modules")), Some(Scope::Ignored));
+        // .DS_Store → Ignored
+        assert_eq!(loc.scope_of(&root.join(".DS_Store")), Some(Scope::Ignored));
+        // .fracta/ → Managed (always)
+        assert_eq!(loc.scope_of(&root.join(".fracta")), Some(Scope::Managed));
+    }
+
+    #[test]
+    fn test_scope_unmanaged_is_plain() {
+        let tmp = TempDir::new().unwrap();
+        let loc = Location::new("test", tmp.path());
+        assert_eq!(loc.scope_of(tmp.path()), Some(Scope::Plain));
+    }
+
+    #[test]
+    fn test_scope_outside_location() {
+        let loc = Location::new("test", "/tmp/my-location");
+        assert_eq!(loc.scope_of(Path::new("/tmp/other")), None);
+    }
+
+    // ── Walk tests ─────────────────────────────────────────────────────
+
+    #[test]
+    fn test_walk_basic() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+
+        std::fs::create_dir(root.join("src")).unwrap();
+        std::fs::write(root.join("src/main.rs"), "fn main() {}").unwrap();
+        std::fs::write(root.join("readme.md"), "# Hello").unwrap();
+
+        let loc = Location {
+            id: Uuid::now_v7(),
+            label: "test".into(),
+            root: root.clone(),
+            managed: true,
+            ignore_rules: IgnoreRules::empty(),
+        };
+
+        let entries = loc.walk(&root, &WalkOptions::default()).unwrap();
+        assert_eq!(entries.len(), 3); // src/, src/main.rs, readme.md
+    }
+
+    #[test]
+    fn test_walk_skips_ignored() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+
+        let mut loc = Location::new("test", &root);
+        loc.init().unwrap();
+
+        // Create managed and ignored content
+        std::fs::write(root.join("readme.md"), "# Hello").unwrap();
+        std::fs::create_dir(root.join("node_modules")).unwrap();
+        std::fs::write(root.join("node_modules/pkg.json"), "{}").unwrap();
+
+        // Default walk: ignored entries excluded
+        let entries = loc.walk(&root, &WalkOptions::default()).unwrap();
+        let names: Vec<_> = entries.iter().map(|e| e.name.as_str()).collect();
+        assert!(names.contains(&"readme.md"));
+        assert!(!names.contains(&"node_modules"));
+        assert!(!names.contains(&"pkg.json"));
+
+        // Walk with include_ignored: everything visible
+        let opts = WalkOptions { include_ignored: true, max_depth: None };
+        let entries = loc.walk(&root, &opts).unwrap();
+        let names: Vec<_> = entries.iter().map(|e| e.name.as_str()).collect();
+        assert!(names.contains(&"readme.md"));
+        assert!(names.contains(&"node_modules"));
+    }
+
+    #[test]
+    fn test_walk_max_depth() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+
+        std::fs::create_dir_all(root.join("a/b/c")).unwrap();
+        std::fs::write(root.join("a/b/c/deep.txt"), "deep").unwrap();
+
+        let loc = Location {
+            id: Uuid::now_v7(),
+            label: "test".into(),
+            root: root.clone(),
+            managed: true,
+            ignore_rules: IgnoreRules::empty(),
+        };
+
+        // Depth 1: only immediate children
+        let opts = WalkOptions { include_ignored: false, max_depth: Some(1) };
+        let entries = loc.walk(&root, &opts).unwrap();
+        assert_eq!(entries.len(), 1); // just "a/"
+        assert_eq!(entries[0].name, "a");
+    }
+
+    // ── CRUD tests ─────────────────────────────────────────────────────
+
+    #[test]
+    fn test_create_and_read_file() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        let loc = Location {
+            id: Uuid::now_v7(),
+            label: "test".into(),
+            root: root.clone(),
+            managed: true,
+            ignore_rules: IgnoreRules::empty(),
+        };
+
+        let path = root.join("test.md");
+        loc.create_file(&path, b"# Hello").unwrap();
+        assert_eq!(loc.read_file_string(&path).unwrap(), "# Hello");
+    }
+
+    #[test]
+    fn test_create_file_already_exists() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        let loc = Location {
+            id: Uuid::now_v7(),
+            label: "test".into(),
+            root: root.clone(),
+            managed: true,
+            ignore_rules: IgnoreRules::empty(),
+        };
+
+        let path = root.join("test.md");
+        loc.create_file(&path, b"v1").unwrap();
+
+        let err = loc.create_file(&path, b"v2").unwrap_err();
+        assert!(matches!(err, VfsError::AlreadyExists(_)));
+    }
+
+    #[test]
+    fn test_write_file_overwrites() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        let loc = Location {
+            id: Uuid::now_v7(),
+            label: "test".into(),
+            root: root.clone(),
+            managed: true,
+            ignore_rules: IgnoreRules::empty(),
+        };
+
+        let path = root.join("test.md");
+        loc.create_file(&path, b"v1").unwrap();
+        loc.write_file(&path, b"v2").unwrap();
+        assert_eq!(loc.read_file_string(&path).unwrap(), "v2");
+    }
+
+    #[test]
+    fn test_create_and_delete_folder() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        let loc = Location {
+            id: Uuid::now_v7(),
+            label: "test".into(),
+            root: root.clone(),
+            managed: true,
+            ignore_rules: IgnoreRules::empty(),
+        };
+
+        let folder = root.join("new_folder");
+        loc.create_folder(&folder).unwrap();
+        assert!(folder.is_dir());
+
+        // Put a file inside
+        loc.create_file(&folder.join("file.txt"), b"data").unwrap();
+
+        // Delete folder recursively
+        loc.delete_folder(&folder).unwrap();
+        assert!(!folder.exists());
+    }
+
+    #[test]
+    fn test_rename() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        let loc = Location {
+            id: Uuid::now_v7(),
+            label: "test".into(),
+            root: root.clone(),
+            managed: true,
+            ignore_rules: IgnoreRules::empty(),
+        };
+
+        let old_path = root.join("old.md");
+        let new_path = root.join("new.md");
+        loc.create_file(&old_path, b"content").unwrap();
+        loc.rename(&old_path, &new_path).unwrap();
+
+        assert!(!old_path.exists());
+        assert_eq!(loc.read_file_string(&new_path).unwrap(), "content");
+    }
+
+    #[test]
+    fn test_move_entry() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        let loc = Location {
+            id: Uuid::now_v7(),
+            label: "test".into(),
+            root: root.clone(),
+            managed: true,
+            ignore_rules: IgnoreRules::empty(),
+        };
+
+        loc.create_folder(&root.join("dest")).unwrap();
+        loc.create_file(&root.join("file.md"), b"data").unwrap();
+
+        let new_path = loc.move_entry(&root.join("file.md"), &root.join("dest")).unwrap();
+        assert_eq!(new_path, root.join("dest/file.md"));
+        assert!(!root.join("file.md").exists());
+        assert_eq!(loc.read_file_string(&new_path).unwrap(), "data");
+    }
+
+    #[test]
+    fn test_cannot_write_inside_fracta_dir() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        let mut loc = Location::new("test", &root);
+        loc.init().unwrap();
+
+        let err = loc.create_file(&root.join(".fracta/hack.txt"), b"bad").unwrap_err();
+        assert!(matches!(err, VfsError::PermissionDenied(_)));
+    }
+
+    #[test]
+    fn test_outside_location_rejected() {
+        let tmp = TempDir::new().unwrap();
+        let loc = Location::new("test", tmp.path());
+
+        let err = loc.create_file(Path::new("/tmp/outside.txt"), b"bad").unwrap_err();
+        assert!(matches!(err, VfsError::OutsideLocation(_)));
+    }
+
+    #[test]
+    fn test_delete_file() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        let loc = Location {
+            id: Uuid::now_v7(),
+            label: "test".into(),
+            root: root.clone(),
+            managed: true,
+            ignore_rules: IgnoreRules::empty(),
+        };
+
+        let path = root.join("delete_me.txt");
+        loc.create_file(&path, b"gone soon").unwrap();
+        assert!(path.exists());
+
+        loc.delete_file(&path).unwrap();
+        assert!(!path.exists());
     }
 }
