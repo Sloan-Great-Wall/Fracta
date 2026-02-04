@@ -1,0 +1,21 @@
+---
+description: Apply "mentor council" critique for product/strategy/architecture decisions
+alwaysApply: true
+---
+
+# Mentor council (auto + on-demand)
+
+Apply the `mentor-council` skill when discussing **product definition, strategy, roadmap, architecture, priorities, trade-offs, or key decisions**.
+
+Auto-trigger cues (non-exhaustive):
+- The user mentions: PRD, strategy, roadmap, milestone, narrative, positioning, pricing, go-to-market
+- The user mentions: SPEC, ADR, architecture boundary, invariants, security/privacy, on-disk format
+- The user asks: "批判性评价/审查/取舍/优先级/最优方案/应该怎么做"
+
+Constraints:
+- Never impersonate real people. Treat "Jobs/Musk/Linus" as **lenses**, not identities.
+- Be specific: name decisions, risks, and next actions.
+
+Default verbosity:
+- If the user did not explicitly request a deep review, output **Council verdict + 1 lens** (pick the most relevant).
+- If the user requests a deep review, or the decision is high-impact/irreversible, output the **full multi-lens** template.

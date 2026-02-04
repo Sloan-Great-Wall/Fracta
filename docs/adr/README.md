@@ -9,7 +9,7 @@ ADRs capture **why** we made a decision (trade-offs, constraints, alternatives),
 | ADR | Decision |
 |-----|----------|
 | [0001](0001-product-name-fracta.md) | Product name is Fracta |
-| [0002](0002-information-architecture-database-now-past.md) | Information architecture: Library / Now / Past |
+| [0002](0002-information-architecture-database-now-past.md) | Information architecture: three areas (terminology updated in ADR-0014) |
 | [0003](0003-core-architecture-rust-core-platform-shells.md) | Core architecture: Rust Core + Platform Shells (UniFFI) |
 | [0004](0004-ingestion-strategy-platform-core-ingestors.md) | Ingestion strategy: Platform + Core Ingestors |
 | [0005](0005-uid-strategy-lazy-assignment.md) | UID strategy: Lazy assignment |
@@ -21,6 +21,7 @@ ADRs capture **why** we made a decision (trade-offs, constraints, alternatives),
 | [0011](0011-liv-as-default-application-profile.md) | **LIV as default Application Profile** |
 | [0012](0012-past-format-markdown-sot-ai-cache.md) | **Past format: Markdown SOT + AI-derived cache** |
 | [0013](0013-open-source-engine-framework-commercial-application.md) | **Open-source Engine + Framework, commercial Application** |
+| [0014](0014-rename-database-to-library.md) | Rename "Database" → "Library" terminology |
 
 ---
 

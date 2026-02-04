@@ -47,7 +47,7 @@ This table maps every LIV domain object (from `LIV_System_Manual.md §2`) to Fra
 
 ## 3. Profile configuration schema
 
-The LIV Profile is stored at `.fracta/config/profiles/liv.json`. Below is the schema definition.
+The LIV Profile **package** is stored at `.fracta/config/profiles/liv.json`. The currently active Profile is selected via `.fracta/config/profile.json` (pointer + user overrides). Below is the LIV package schema definition.
 
 ```jsonc
 {
@@ -234,8 +234,9 @@ LIV-specific data lives in the standard `.fracta/` structure:
 LocationRoot/
 ├── .fracta/
 │   ├── config/
+│   │   ├── profile.json               ← Active Profile pointer + user overrides
 │   │   ├── profiles/
-│   │   │   └── liv.json              ← LIV Profile config (§3)
+│   │   │   └── liv.json               ← LIV Profile package (§3)
 │   │   └── schemas/
 │   │       ├── quest.schema.json     ← Quest field definitions
 │   │       ├── loot.schema.json      ← Loot field definitions

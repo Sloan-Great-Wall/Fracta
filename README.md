@@ -2,7 +2,7 @@
 
 A **local-first life operating system**: a modular personal data workbench with a file/note/communication engine, a semantic framework for Library/Now/Past, and an application layer for methodologies (LIV), AI copilots, crypto incentives, and third-party integrations — all on open formats, without vendor lock-in.
 
-This repository is currently in the **software definition / design phase** (docs-only; no implementation code yet).
+This repository contains the **canonical system definition docs** under `docs/` and the **initial Rust workspace scaffold**. Current status and roadmap live in `docs/README.md` and `docs/PRD.md`.
 
 ## Documentation (start here)
 
