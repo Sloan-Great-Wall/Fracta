@@ -21,6 +21,7 @@ use crate::error::{VfsError, VfsResult};
 use crate::ignore::IgnoreRules;
 use crate::init::init_fracta_dir;
 use crate::scope::Scope;
+use crate::settings::LocationSettings;
 use crate::writer::atomic_write;
 
 /// The `.fracta/` directory name within a managed Location.
@@ -72,9 +73,11 @@ impl Location {
         }
     }
 
-    /// Open an existing managed Location, loading ignore rules from disk.
+    /// Open an existing managed Location, loading settings and ignore rules from disk.
     ///
-    /// Falls back to default ignore rules if `.fracta/config/ignore` is missing.
+    /// The Location ID is loaded from `.fracta/config/settings.json` if it exists,
+    /// ensuring the same ID persists across sessions. Falls back to default ignore
+    /// rules if `.fracta/config/ignore` is missing.
     pub fn open(label: impl Into<String>, root: impl Into<PathBuf>) -> VfsResult<Self> {
         let root = root.into();
         if !root.is_dir() {
@@ -84,8 +87,17 @@ impl Location {
         let ignore_path = root.join(FRACTA_DIR).join("config").join("ignore");
         let ignore_rules = IgnoreRules::load(&ignore_path).unwrap_or_default();
 
+        // Load persistent ID from settings, or generate a new one
+        let mut settings = LocationSettings::load(&root)?;
+        let id = settings.get_or_create_id();
+
+        // If we generated a new ID, persist it
+        if settings.id.is_some() {
+            settings.save(&root)?;
+        }
+
         Ok(Self {
-            id: Uuid::now_v7(),
+            id,
             label: label.into(),
             root,
             managed: true,
@@ -94,10 +106,19 @@ impl Location {
     }
 
     /// Initialize this Location: create `.fracta/` structure and mark as managed.
+    ///
+    /// Persists the Location ID to `.fracta/config/settings.json`.
     pub fn init(&mut self) -> VfsResult<()> {
         init_fracta_dir(&self.root)?;
         self.managed = true;
         self.reload_ignore_rules()?;
+
+        // Persist the Location ID
+        let mut settings = LocationSettings::load(&self.root)?;
+        settings.id = Some(self.id);
+        settings.label = Some(self.label.clone());
+        settings.save(&self.root)?;
+
         Ok(())
     }
 
@@ -472,11 +493,7 @@ impl Location {
             name,
             extension,
             size: metadata.len(),
-            modified: metadata
-                .modified()
-                .ok()
-                .map(DateTime::from)
-                .unwrap_or_default(),
+            modified: metadata.modified().ok().map(DateTime::from),
             created: metadata.created().ok().map(DateTime::from),
             scope,
         }

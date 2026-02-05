@@ -4,7 +4,31 @@ description = "Fracta UniFFI bridge: exposes Rust Core APIs to platform shells (
 version.workspace = true
 edition.workspace = true
 
+[lib]
+crate-type = ["cdylib", "staticlib", "lib"]
+name = "fracta_ffi"
+
 [dependencies]
+# UniFFI for cross-language bindings
+uniffi = { version = "0.28", features = ["cli"] }
+
+# Internal crates
 fracta-vfs = { workspace = true }
-fracta-framework = { workspace = true }
+fracta-note = { workspace = true }
+fracta-index = { workspace = true }
+
+# Error handling
 thiserror = { workspace = true }
+
+# Date/time for type conversion
+chrono = { workspace = true }
+
+[build-dependencies]
+uniffi = { version = "0.28", features = ["build"] }
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi_bindgen.rs"
+
+[dev-dependencies]
+tempfile = { workspace = true }

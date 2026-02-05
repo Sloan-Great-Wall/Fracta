@@ -28,6 +28,7 @@ pub mod ignore;
 pub mod init;
 pub mod location;
 pub mod scope;
+pub mod settings;
 pub mod watcher;
 pub mod writer;
 
@@ -37,3 +38,4 @@ pub use ignore::IgnoreRules;
 pub use init::init_fracta_dir;
 pub use location::{Location, WalkOptions, FRACTA_DIR};
 pub use scope::Scope;
+pub use settings::LocationSettings;

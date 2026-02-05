@@ -167,12 +167,13 @@ impl Index {
                 None => continue,
             };
 
-            let needs_update = match self.metadata.get_file(&rel_path)? {
-                Some(existing) => {
+            let needs_update = match (entry.modified, self.metadata.get_file(&rel_path)?) {
+                (Some(entry_mtime), Some(existing)) => {
                     // Compare mtime (with 1-second tolerance for filesystem precision)
-                    (entry.modified - existing.mtime).num_seconds().abs() > 1
+                    (entry_mtime - existing.mtime).num_seconds().abs() > 1
                 }
-                None => true, // New file
+                (None, _) => true, // Missing mtime: conservative, assume needs update
+                (_, None) => true, // New file
             };
 
             if needs_update {
@@ -211,9 +212,10 @@ impl Index {
         };
 
         // Create file entry for metadata
+        // Use current time as fallback when mtime is unavailable (conservative: marks as "fresh")
         let file_entry = FileEntry {
             path: rel_path.clone(),
-            mtime: entry.modified,
+            mtime: entry.modified.unwrap_or_else(chrono::Utc::now),
             size: entry.size,
             content_hash: None, // TODO: compute blake3 hash
             indexed: false,

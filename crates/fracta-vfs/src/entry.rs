@@ -36,8 +36,8 @@ pub struct Entry {
     /// Size in bytes. 0 for folders.
     pub size: u64,
 
-    /// Last modification time.
-    pub modified: DateTime<Utc>,
+    /// Last modification time (None if filesystem didn't provide it).
+    pub modified: Option<DateTime<Utc>>,
 
     /// Creation time (if available from the OS).
     pub created: Option<DateTime<Utc>>,
