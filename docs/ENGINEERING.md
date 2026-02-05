@@ -308,7 +308,7 @@ This improves security, makes behavior explainable, and reduces edge-case bugs o
 | **Crypto signing** | `ed25519-dalek` | Ed25519 as specified in SPEC §13 |
 | **Hashing** | `blake3` | Fast, parallelizable; used for content-addressing and dedup keys |
 | **Date/time** | `chrono` | Full timezone support; ISO 8601 parsing |
-| **Error handling** | `thiserror` + `anyhow` | `thiserror` for library errors; `anyhow` for application-level |
+| **Error handling** | `thiserror` | Typed errors for all Engine crates; simple, explicit error handling |
 | **Logging** | `tracing` | Structured logging with spans; async-aware |
 | **HTTP client** | `reqwest` | Async HTTP; needed for API ingestors and AI provider calls |
 | **Vector embeddings** | *(deferred to Phase 2)* | Options: sqlite-vss, qdrant-client, or custom HNSW |
@@ -359,7 +359,7 @@ fracta/
 - **Layer boundary**: Engine code must not import Framework types; Framework code must not import Application types (ADR-0010).
 - **AI outputs are files**: all AI-generated artifacts must be materialized as open-format files, not hidden in databases.
 - **Profile-configurable**: behavior constraints (like Quest Slots cap) are defined in Profile configs, not hard-coded.
-- **Error pattern**: Engine crates define typed errors with `thiserror`; application code uses `anyhow` for convenience.
+- **Error pattern**: Engine crates define typed errors with `thiserror`; each crate has its own `Error` enum and `Result<T>` alias.
 - **Logging**: Use `tracing` spans to track operations across async boundaries.
 - **Testing**: Each crate has unit tests; workspace-level integration tests live under `tests/` (planned).
 
@@ -387,3 +387,259 @@ On every change:
 - Root `README.md` must remain a **thin pointer** and must not contradict `docs/`.
 - Canonical truth lives in `docs/` (SPEC/PRD/ENGINEERING/ADR). External docs (`press/`, `manual/`) may not duplicate it.
 - Any "planned repo structure" diagrams must be labeled **planned vs current** to avoid contributor confusion.
+
+---
+
+## 9. Engine subsystem contracts
+
+Each Engine crate has a defined responsibility boundary. These contracts help developers understand what each subsystem does and doesn't do, preventing scope creep and guiding integration.
+
+### 9.1 VFS (fracta-vfs)
+
+**Responsibility:**
+- File and folder CRUD operations within managed Locations
+- Path safety: prevent symlink escapes and path traversal attacks
+- Ignore rule management (gitignore-style patterns)
+- Atomic writes (temp → fsync → rename) for crash safety
+- Directory traversal with scope filtering (Managed / Ignored / Plain)
+- `.fracta/` directory initialization and structure
+
+**Not responsible for:**
+- File content semantics (Markdown parsing → Note)
+- Full-text search or indexing (→ Index)
+- Type systems or semantic objects (→ Framework)
+- Platform-specific permissions (→ Platform adapters)
+
+**Guarantees:**
+- All write operations are atomic and crash-safe
+- `contains()` resolves symlinks to prevent path escapes
+- `.fracta/` directory is hidden from directory listings
+- Paths outside Location boundaries are rejected
+
+**Dependencies:** None (leaf crate in Engine layer)
+
+**Key types:** `Location`, `Entry`, `EntryKind`, `Scope`, `WalkOptions`, `VfsError`
+
+**Code reference:** `crates/fracta-vfs/src/`
+
+### 9.2 Note (fracta-note)
+
+**Responsibility:**
+- Markdown parsing (GFM superset: tables, task lists, strikethrough, footnotes)
+- YAML front matter extraction and typed field access
+- Block model conversion (Markdown AST → structured blocks)
+- Plain text extraction (for search indexing)
+
+**Not responsible for:**
+- File I/O (→ VFS)
+- Storing or caching parsed results (→ Index)
+- Semantic interpretation of front matter fields (→ Framework)
+
+**Guarantees:**
+- Parsing is deterministic and stateless
+- Invalid Markdown returns empty/default structures, not errors
+- UTF-8 content is handled correctly (including CJK)
+- Front matter parsing is strict: rejects non-mapping YAML
+
+**Dependencies:** None (leaf crate in Engine layer)
+
+**Key types:** `Document`, `Block`, `Inline`, `FrontMatter`
+
+**Code reference:** `crates/fracta-note/src/`
+
+### 9.3 Index (fracta-index)
+
+**Responsibility:**
+- File registry (path, mtime, size, hash, indexed status)
+- Metadata extraction and storage (title, tags, date, area from front matter)
+- Full-text search with CJK support (Tantivy + jieba)
+- Full rebuild and incremental update based on mtime
+- Stale file detection and removal
+
+**Not responsible for:**
+- File watching or real-time updates (→ VFS watcher + caller)
+- Query DSL or complex filters (→ Query)
+- Semantic type validation (→ Framework)
+
+**Guarantees:**
+- Search queries are parameterized (SQL injection safe)
+- Chinese text is tokenized by dictionary segmentation (not character-level)
+- Incremental updates detect changes with 1-second mtime tolerance
+- Index can be fully rebuilt from VFS at any time (cache, not SOT)
+
+**Dependencies:** VFS (traversal), Note (Markdown parsing)
+
+**Key types:** `Index`, `SearchHit`, `FileEntry`, `FileMetadata`, `BuildStats`
+
+**Code reference:** `crates/fracta-index/src/`
+
+### 9.4 Query (fracta-query) — Planned
+
+**Responsibility:**
+- Filter expressions (field = value, field in [...], etc.)
+- Sort expressions (multi-field, ascending/descending)
+- Group-by and aggregation
+- Type-agnostic query execution on Index results
+
+**Not responsible for:**
+- Storage (→ Index)
+- Full-text search ranking (→ Index/Tantivy)
+- View persistence (→ Config layer)
+
+**Status:** Stub. Will be implemented in Milestone 0.4.
+
+### 9.5 Comm (fracta-comm) — Planned
+
+**Responsibility:**
+- IMAP client for email ingestion
+- CalDAV client for calendar sync
+- RSS/Atom feed fetching
+- Generic HTTP client for API ingestors
+
+**Not responsible for:**
+- Credential storage (→ Platform Keychain)
+- OAuth flows (→ Platform shell)
+- Event normalization (→ Framework pipelines)
+
+**Status:** Stub. Will be implemented in Milestone 0.2+.
+
+### 9.6 AI (fracta-ai) — Planned
+
+**Responsibility:**
+- LLM provider abstraction (OpenAI, Anthropic, local models)
+- Prompt template management
+- Embedding generation interface
+- Token counting and context management
+
+**Not responsible for:**
+- Apple AI framework calls (→ Platform shell)
+- AI orchestration logic (→ Framework)
+- Caching AI results (→ Framework pipelines)
+
+**Status:** Stub. Interface design in Milestone 0.1, implementation in 0.2+.
+
+### 9.7 Sync (fracta-sync) — Planned
+
+**Responsibility:**
+- Change detection across devices
+- Conflict resolution strategies (last-write-wins, merge, manual)
+- State vector management
+
+**Not responsible for:**
+- Network transport (→ Comm or Platform)
+- File I/O (→ VFS)
+
+**Status:** Stub. Planned for Milestone 0.5+.
+
+### 9.8 Crypto (fracta-crypto) — Planned
+
+**Responsibility:**
+- Ed25519 signing and verification
+- BLAKE3 hashing
+- Key derivation and management interfaces
+
+**Not responsible for:**
+- Secure key storage (→ Platform Keychain/Secure Enclave)
+- Token economics (→ Framework)
+
+**Status:** Stub. Planned for Milestone 0.5+.
+
+### 9.9 Platform (fracta-platform) — Planned
+
+**Responsibility:**
+- Trait definitions for platform-specific capabilities
+- Keychain access trait
+- Permission request trait
+- AI framework bridge trait
+
+**Not responsible for:**
+- Actual implementations (→ Platform shell)
+
+**Status:** Stub. Trait design in Milestone 0.1.
+
+---
+
+## 10. Framework extensibility strategy
+
+The Framework layer provides **mechanisms**, not fixed types. LIV is the default Profile, but the architecture supports other methodologies.
+
+### 10.1 Design principle: mechanisms over instances
+
+```
+Framework provides          Profiles define (using mechanisms)
+──────────────────          ─────────────────────────────────
+TypeRegistry                → Quest, Loot, HUD (LIV)
+SchemaSystem                → GTDProject, GTDContext (GTD Profile)
+QueryEngine                 → ZettelNote, ZettelLink (Zettelkasten Profile)
+Pipeline                    → PARAProject, PARAResource (PARA Profile)
+Validator                   → ... any custom methodology
+```
+
+**What this means:**
+- Framework code does NOT contain string literals like `"Quest"` or `"Loot"`
+- Framework provides `TypeDefinition`, `FieldDefinition`, `RelationDefinition` structs
+- Profiles (like LIV) use these structs to register their specific types
+- Users can install different Profiles or create their own
+
+### 10.2 Core mechanisms (to be implemented)
+
+| Mechanism | Purpose | Example Usage |
+|-----------|---------|---------------|
+| **TypeRegistry** | Register and discover custom types | `registry.register("Quest", quest_schema)` |
+| **SchemaSystem** | Define fields, types, constraints, relations | `field("status", Enum(["active", "completed"]))` |
+| **QueryEngine** | Type-agnostic filtering and sorting | `query.filter("type", "Quest").filter("status", "active")` |
+| **Pipeline** | Event-driven automation | `on("Quest.completed").create("Loot")` |
+| **Validator** | Runtime constraint checking | `max_active("Quest", 2)` |
+
+### 10.3 LIV as default
+
+When Fracta starts for the first time:
+1. LIV Profile is pre-installed in `.fracta/config/profiles/liv.json`
+2. `.fracta/config/profile.json` points to LIV as the active Profile
+3. LIV types (Quest, Loot, HUD, etc.) are registered via the TypeRegistry
+
+Users can:
+- Customize LIV (override fields, constraints, pipelines)
+- Install additional Profiles from a marketplace (future)
+- Create their own Profile from scratch
+
+### 10.4 On-disk type representation
+
+All typed objects are stored as Markdown with YAML front matter. The `type` field identifies the Profile type:
+
+```yaml
+---
+id: "01HQ..."           # Lazy-assigned UID (ADR-0005)
+type: quest             # Profile-defined type name
+schema: 1               # Schema version for future migrations
+created: 2025-02-05
+modified: 2025-02-05
+
+# Type-specific fields (defined by Profile schema)
+title: "Complete Index implementation"
+status: active
+clearCheck: "All tests pass, PR merged"
+
+# Relations (references by UID or relative path)
+blockedBy: []
+loot: ["./rewards/index-loot.md"]
+---
+
+# Quest content
+
+Markdown body with details, notes, and context.
+```
+
+**Key points:**
+- `type` field is required for Framework to route to correct schema
+- `schema` field enables migrations when type definitions evolve
+- Relations can use UIDs (for cross-Location) or relative paths (for portability)
+- Body content is free-form Markdown (type-agnostic)
+
+### 10.5 Implementation timeline
+
+- **Phase 0.3 (Now + LIV):** Implement TypeRegistry, basic SchemaSystem, LIV types
+- **Phase 0.4 (Library + Views):** Implement QueryEngine, advanced filters
+- **Phase 1.0 (Life OS):** Full Pipeline system, Validator, Profile marketplace
+
+Reference: `docs/profiles/liv-profile-spec.md` for LIV-specific type definitions.
