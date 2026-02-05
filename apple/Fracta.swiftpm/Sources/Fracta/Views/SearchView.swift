@@ -177,20 +177,7 @@ struct SearchView: View {
             // Check if query is still the same
             guard appState.searchQuery == query else { return }
 
-            // TODO: Use FFI bridge for real search
-            #if DEBUG
-            // Mock results
-            await MainActor.run {
-                results = [
-                    SearchHit(id: "/notes.md", path: "/notes.md", title: "Notes containing '\(query)'", score: 0.95),
-                    SearchHit(id: "/projects/rust.md", path: "/projects/rust.md", title: "Rust Project", score: 0.8),
-                    SearchHit(id: "/library/books.md", path: "/library/books.md", title: "Reading List", score: 0.6)
-                ]
-                isSearching = false
-                focusedIndex = 0
-            }
-            #else
-            // Real search - safely handle missing location
+            // Safely handle missing location
             guard let location = appState.currentLocation else {
                 await MainActor.run {
                     results = []
@@ -200,8 +187,11 @@ struct SearchView: View {
             }
 
             do {
-                let index = try FractaBridge.shared.openIndex(location: location)
-                let hits = try index.search(query: query, limit: 50)
+                let hits = try FractaBridge.shared.search(
+                    locationPath: location.rootPath,
+                    query: query,
+                    limit: 50
+                )
                 await MainActor.run {
                     results = hits
                     isSearching = false
@@ -213,7 +203,6 @@ struct SearchView: View {
                     isSearching = false
                 }
             }
-            #endif
         }
     }
 
@@ -301,7 +290,8 @@ struct SearchTip: View {
 }
 
 #Preview {
+    @Previewable @StateObject var appState = AppState()
     SearchView()
-        .environmentObject(AppState())
+        .environmentObject(appState)
         .frame(width: 400, height: 600)
 }

@@ -105,21 +105,57 @@ struct FileIconView: View {
 // MARK: - Preview
 
 #Preview {
+    let folderItem = FileItem(
+        id: "/Projects",
+        path: "/Projects",
+        name: "Projects",
+        kind: .folder,
+        size: 0,
+        modified: Date(),
+        created: Date(),
+        scope: .managed,
+        fileExtension: nil
+    )
+
+    let markdownItem = FileItem(
+        id: "/notes.md",
+        path: "/notes.md",
+        name: "notes.md",
+        kind: .file,
+        size: 2048,
+        modified: Date().addingTimeInterval(-3600),
+        created: Date(),
+        scope: .managed,
+        fileExtension: "md"
+    )
+
+    let jsonItem = FileItem(
+        id: "/config.json",
+        path: "/config.json",
+        name: "config.json",
+        kind: .file,
+        size: 512,
+        modified: Date().addingTimeInterval(-86400),
+        created: Date(),
+        scope: .managed,
+        fileExtension: "json"
+    )
+
     VStack(spacing: 8) {
         FileRowView(
-            file: FileItem.demoFiles[0],
+            file: folderItem,
             isSelected: false,
             isFocused: true
         )
 
         FileRowView(
-            file: FileItem.demoFiles[2],
+            file: markdownItem,
             isSelected: true,
             isFocused: false
         )
 
         FileRowView(
-            file: FileItem.demoFiles[4],
+            file: jsonItem,
             isSelected: false,
             isFocused: false
         )

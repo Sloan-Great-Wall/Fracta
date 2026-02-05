@@ -127,44 +127,30 @@ struct BrowserView: View {
     @EnvironmentObject var appState: AppState
     @State private var files: [FileItem] = []
     @State private var focusedIndex: Int = 0
+    @State private var isLoading: Bool = false
+    @State private var errorMessage: String?
     @FocusState private var isFocused: Bool
 
-    #if DEBUG
-    private var displayFiles: [FileItem] {
-        files.isEmpty ? FileItem.demoFiles : files
-    }
-    #else
-    private var displayFiles: [FileItem] { files }
-    #endif
-
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: Spacing.sm) {
-                    ForEach(Array(displayFiles.enumerated()), id: \.element.id) { index, file in
-                        FileRowView(
-                            file: file,
-                            isSelected: appState.selectedFile?.id == file.id,
-                            isFocused: focusedIndex == index && isFocused
-                        )
-                        .id(index)
-                        .onTapGesture {
-                            selectFile(file)
-                        }
-                        .focusable()
-                    }
+        Group {
+            if isLoading {
+                ProgressView("Loading...")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let error = errorMessage {
+                VStack(spacing: Spacing.lg) {
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.system(size: 48))
+                        .foregroundStyle(.secondary)
+                    Text(error)
+                        .font(.glassBody)
+                        .foregroundStyle(.secondary)
+                    Button("Retry") { loadFiles() }
                 }
-                .padding()
-            }
-            .focused($isFocused)
-            .onMoveCommand { direction in
-                handleMove(direction, proxy: proxy)
-            }
-            .onKeyPress(.return) {
-                if let file = displayFiles[safe: focusedIndex] {
-                    activateFile(file)
-                }
-                return .handled
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if files.isEmpty {
+                emptyBrowserView
+            } else {
+                fileListView
             }
         }
         .navigationTitle(appState.currentLocation?.label ?? "Files")
@@ -191,6 +177,92 @@ struct BrowserView: View {
             isPresented: $appState.isSearching,
             prompt: "Search files..."
         )
+        .onAppear { loadFiles() }
+        .onChange(of: appState.currentLocation?.rootPath) { _, _ in loadFiles() }
+    }
+
+    private var emptyBrowserView: some View {
+        VStack(spacing: Spacing.lg) {
+            Image(systemName: "folder.badge.plus")
+                .font(.system(size: 64))
+                .foregroundStyle(.secondary)
+
+            Text("No Location Selected")
+                .font(.glassHeadline)
+                .foregroundStyle(.secondary)
+
+            Text("Open a folder to start browsing")
+                .font(.glassCaption)
+                .foregroundStyle(.tertiary)
+
+            Button {
+                // TODO: Show folder picker
+            } label: {
+                Label("Open Location", systemImage: "folder")
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var fileListView: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: Spacing.sm) {
+                    ForEach(Array(files.enumerated()), id: \.element.id) { index, file in
+                        FileRowView(
+                            file: file,
+                            isSelected: appState.selectedFile?.id == file.id,
+                            isFocused: focusedIndex == index && isFocused
+                        )
+                        .id(index)
+                        .onTapGesture {
+                            selectFile(file)
+                        }
+                        .focusable()
+                    }
+                }
+                .padding()
+            }
+            .focused($isFocused)
+            .onMoveCommand { direction in
+                handleMove(direction, proxy: proxy)
+            }
+            .onKeyPress(.return) {
+                if let file = files[safe: focusedIndex] {
+                    activateFile(file)
+                }
+                return .handled
+            }
+        }
+    }
+
+    private func loadFiles() {
+        guard let location = appState.currentLocation else {
+            files = []
+            return
+        }
+
+        isLoading = true
+        errorMessage = nil
+
+        Task {
+            do {
+                let items = try FractaBridge.shared.listDirectory(
+                    locationPath: location.rootPath,
+                    directoryPath: location.rootPath
+                )
+                await MainActor.run {
+                    files = items
+                    isLoading = false
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = error.localizedDescription
+                    isLoading = false
+                }
+            }
+        }
     }
 
     private func handleMove(_ direction: MoveCommandDirection, proxy: ScrollViewProxy) {
@@ -198,7 +270,7 @@ struct BrowserView: View {
         case .up:
             focusedIndex = max(0, focusedIndex - 1)
         case .down:
-            focusedIndex = min(displayFiles.count - 1, focusedIndex + 1)
+            focusedIndex = min(files.count - 1, focusedIndex + 1)
         default:
             return
         }
@@ -209,7 +281,7 @@ struct BrowserView: View {
 
     private func selectFile(_ file: FileItem) {
         appState.selectedFile = file
-        if let index = displayFiles.firstIndex(where: { $0.id == file.id }) {
+        if let index = files.firstIndex(where: { $0.id == file.id }) {
             focusedIndex = index
         }
     }
@@ -305,6 +377,7 @@ extension Array {
 }
 
 #Preview {
+    @Previewable @StateObject var appState = AppState()
     ContentView()
-        .environmentObject(AppState())
+        .environmentObject(appState)
 }

@@ -8,13 +8,6 @@ struct LocationState: Identifiable, Equatable {
     let label: String
     let rootPath: String
     var isManaged: Bool
-
-    static let demo = LocationState(
-        id: UUID(),
-        label: "Demo Location",
-        rootPath: "/Users/Demo/Documents",
-        isManaged: true
-    )
 }
 
 // MARK: - File Item
@@ -61,17 +54,85 @@ struct FileItem: Identifiable, Hashable {
         formatter.unitsStyle = .abbreviated
         return formatter.localizedString(for: date, relativeTo: Date())
     }
+
+    /// Initialize from FFI entry
+    init(from entry: FfiEntry) {
+        self.id = entry.path
+        self.path = entry.path
+        self.name = entry.name
+        self.kind = FileKind(from: entry.kind)
+        self.size = entry.size
+        self.modified = Self.parseISO8601(entry.modified)
+        self.created = entry.created.flatMap { Self.parseISO8601($0) }
+        self.scope = FileScope(from: entry.scope)
+        self.fileExtension = entry.extension
+    }
+
+    /// Manual initializer for creating FileItem from search results
+    init(
+        id: String,
+        path: String,
+        name: String,
+        kind: FileKind,
+        size: UInt64,
+        modified: Date?,
+        created: Date?,
+        scope: FileScope,
+        fileExtension: String?
+    ) {
+        self.id = id
+        self.path = path
+        self.name = name
+        self.kind = kind
+        self.size = size
+        self.modified = modified
+        self.created = created
+        self.scope = scope
+        self.fileExtension = fileExtension
+    }
+
+    /// Parse ISO 8601 date string
+    private static func parseISO8601(_ string: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: string) {
+            return date
+        }
+        // Try without fractional seconds
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.date(from: string)
+    }
 }
 
 enum FileKind: String, Codable {
     case file
     case folder
+
+    init(from ffiKind: FfiEntryKind) {
+        switch ffiKind {
+        case .file:
+            self = .file
+        case .folder:
+            self = .folder
+        }
+    }
 }
 
 enum FileScope: String, Codable {
     case managed
     case ignored
     case plain
+
+    init(from ffiScope: FfiScope) {
+        switch ffiScope {
+        case .managed:
+            self = .managed
+        case .ignored:
+            self = .ignored
+        case .plain:
+            self = .plain
+        }
+    }
 }
 
 // MARK: - Document
@@ -84,6 +145,33 @@ struct DocumentContent: Equatable {
     let tags: [String]
     let area: String?
     let blockCount: Int
+
+    /// Initialize from FFI document
+    init(from doc: FfiDocument) {
+        self.title = doc.title()
+        self.plainText = doc.plainText()
+        self.hasFrontMatter = doc.hasFrontMatter()
+        self.tags = doc.frontMatterStringList(key: "tags") ?? []
+        self.area = doc.frontMatterString(key: "area")
+        self.blockCount = Int(doc.blockCount())
+    }
+
+    /// Manual initializer
+    init(
+        title: String?,
+        plainText: String,
+        hasFrontMatter: Bool,
+        tags: [String],
+        area: String?,
+        blockCount: Int
+    ) {
+        self.title = title
+        self.plainText = plainText
+        self.hasFrontMatter = hasFrontMatter
+        self.tags = tags
+        self.area = area
+        self.blockCount = blockCount
+    }
 }
 
 // MARK: - Search
@@ -94,87 +182,20 @@ struct SearchHit: Identifiable {
     let path: String
     let title: String?
     let score: Float
+
+    /// Initialize from FFI search hit
+    init(from hit: FfiSearchHit) {
+        self.id = hit.path
+        self.path = hit.path
+        self.title = hit.title
+        self.score = hit.score
+    }
+
+    /// Manual initializer
+    init(id: String, path: String, title: String?, score: Float) {
+        self.id = id
+        self.path = path
+        self.title = title
+        self.score = score
+    }
 }
-
-// MARK: - Demo Data
-
-#if DEBUG
-extension FileItem {
-    static let demoFiles: [FileItem] = [
-        FileItem(
-            id: "/demo/Projects",
-            path: "/demo/Projects",
-            name: "Projects",
-            kind: .folder,
-            size: 0,
-            modified: Date(),
-            created: Date(),
-            scope: .managed,
-            fileExtension: nil
-        ),
-        FileItem(
-            id: "/demo/Library",
-            path: "/demo/Library",
-            name: "Library",
-            kind: .folder,
-            size: 0,
-            modified: Date().addingTimeInterval(-86400),
-            created: Date().addingTimeInterval(-86400 * 30),
-            scope: .managed,
-            fileExtension: nil
-        ),
-        FileItem(
-            id: "/demo/inbox.md",
-            path: "/demo/inbox.md",
-            name: "inbox.md",
-            kind: .file,
-            size: 2048,
-            modified: Date().addingTimeInterval(-3600),
-            created: Date().addingTimeInterval(-86400 * 7),
-            scope: .managed,
-            fileExtension: "md"
-        ),
-        FileItem(
-            id: "/demo/notes.md",
-            path: "/demo/notes.md",
-            name: "notes.md",
-            kind: .file,
-            size: 4096,
-            modified: Date().addingTimeInterval(-7200),
-            created: Date().addingTimeInterval(-86400 * 14),
-            scope: .managed,
-            fileExtension: "md"
-        ),
-        FileItem(
-            id: "/demo/config.json",
-            path: "/demo/config.json",
-            name: "config.json",
-            kind: .file,
-            size: 512,
-            modified: Date().addingTimeInterval(-86400 * 3),
-            created: Date().addingTimeInterval(-86400 * 30),
-            scope: .managed,
-            fileExtension: "json"
-        )
-    ]
-
-    static let demoDocument = DocumentContent(
-        title: "Welcome to Fracta",
-        plainText: """
-        Welcome to Fracta — your local-first life operating system.
-
-        Fracta helps you organize your digital life with:
-        - File browsing with smart indexing
-        - Full-text search across all your documents
-        - AI-assisted insights and summaries
-        - Game controller navigation support
-
-        Get started by adding a location (folder) to manage.
-        """,
-        hasFrontMatter: true,
-        tags: ["welcome", "getting-started"],
-        area: "library",
-        blockCount: 5
-    )
-}
-#endif

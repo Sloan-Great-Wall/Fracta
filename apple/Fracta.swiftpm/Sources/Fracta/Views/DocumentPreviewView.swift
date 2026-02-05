@@ -8,16 +8,10 @@ import SwiftUI
 /// - Tags and area information
 struct DocumentPreviewView: View {
     let file: FileItem
+    @EnvironmentObject var appState: AppState
     @State private var document: DocumentContent?
     @State private var isLoading = true
-
-    #if DEBUG
-    private var displayDocument: DocumentContent {
-        document ?? FileItem.demoDocument
-    }
-    #else
-    private var displayDocument: DocumentContent? { document }
-    #endif
+    @State private var errorMessage: String?
 
     var body: some View {
         ScrollView {
@@ -29,10 +23,12 @@ struct DocumentPreviewView: View {
                     .background(.white.opacity(0.1))
 
                 // Content
-                if let doc = displayDocument {
+                if let doc = document {
                     contentSection(doc)
                 } else if isLoading {
                     loadingSection
+                } else if let error = errorMessage {
+                    errorSection(error)
                 } else {
                     emptySection
                 }
@@ -83,7 +79,7 @@ struct DocumentPreviewView: View {
                     .frame(width: 56, height: 56)
 
                 VStack(alignment: .leading, spacing: Spacing.xs) {
-                    if let doc = displayDocument, let title = doc.title {
+                    if let doc = document, let title = doc.title {
                         Text(title)
                             .font(.glassTitle)
                     } else {
@@ -99,7 +95,7 @@ struct DocumentPreviewView: View {
             }
 
             // Metadata badges
-            if let doc = displayDocument {
+            if let doc = document {
                 HStack(spacing: Spacing.sm) {
                     if let area = doc.area {
                         MetadataBadge(label: area, icon: "folder", color: .blue)
@@ -127,7 +123,7 @@ struct DocumentPreviewView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                if let doc = displayDocument {
+                if let doc = document {
                     Label("\(doc.blockCount) blocks", systemImage: "square.stack")
                         .font(.glassCaption)
                         .foregroundStyle(.secondary)
@@ -160,6 +156,24 @@ struct DocumentPreviewView: View {
         .frame(maxWidth: .infinity, minHeight: 200)
     }
 
+    private func errorSection(_ error: String) -> some View {
+        VStack(spacing: Spacing.md) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.largeTitle)
+                .foregroundStyle(.orange)
+
+            Text("Error loading document")
+                .font(.glassHeadline)
+                .foregroundStyle(.secondary)
+
+            Text(error)
+                .font(.glassCaption)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, minHeight: 200)
+    }
+
     private var emptySection: some View {
         VStack(spacing: Spacing.md) {
             Image(systemName: "doc.questionmark")
@@ -176,15 +190,34 @@ struct DocumentPreviewView: View {
     // MARK: - Loading
 
     private func loadDocument() async {
-        // TODO: Use FFI to load real document
-        // For now, simulate loading
-        try? await Task.sleep(for: .milliseconds(300))
-        isLoading = false
+        guard file.isMarkdown else {
+            // Non-markdown files: show basic info
+            isLoading = false
+            return
+        }
 
-        #if DEBUG
-        // Use demo document in debug
-        document = FileItem.demoDocument
-        #endif
+        guard let location = appState.currentLocation else {
+            errorMessage = "No location open"
+            isLoading = false
+            return
+        }
+
+        do {
+            let content = try FractaBridge.shared.readFile(
+                locationPath: location.rootPath,
+                filePath: file.path
+            )
+            let doc = FractaBridge.shared.parseDocument(markdown: content)
+            await MainActor.run {
+                document = doc
+                isLoading = false
+            }
+        } catch {
+            await MainActor.run {
+                errorMessage = error.localizedDescription
+                isLoading = false
+            }
+        }
     }
 }
 
@@ -215,6 +248,19 @@ struct MetadataBadge: View {
 
 #Preview {
     NavigationStack {
-        DocumentPreviewView(file: FileItem.demoFiles[2])
+        // Create a sample file for preview
+        let sampleFile = FileItem(
+            id: "/demo/notes.md",
+            path: "/demo/notes.md",
+            name: "notes.md",
+            kind: .file,
+            size: 1024,
+            modified: Date(),
+            created: Date(),
+            scope: .managed,
+            fileExtension: "md"
+        )
+        DocumentPreviewView(file: sampleFile)
+            .environmentObject(AppState())
     }
 }

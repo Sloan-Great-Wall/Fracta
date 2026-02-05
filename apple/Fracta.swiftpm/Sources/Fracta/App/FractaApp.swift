@@ -59,10 +59,7 @@ class AppState: ObservableObject {
     @Published var selectedFile: FileItem?
 
     init() {
-        // Initialize with demo location if no real location
-        #if DEBUG
-        self.currentLocation = LocationState.demo
-        #endif
+        // Location will be set when user opens one
     }
 }
 
