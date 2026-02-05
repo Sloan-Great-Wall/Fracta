@@ -17,7 +17,7 @@ resolver = "2"
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-license = "MIT OR Apache-2.0"
+license = "Apache-2.0"
 repository = "https://github.com/Sloan-Great-Wall/Fracta"
 
 # Shared dependency versions — crates use `workspace = true` to inherit
@@ -32,7 +32,6 @@ serde_yaml = "0.9"
 
 # Error handling
 thiserror = "2"
-anyhow = "1"
 
 # Logging
 tracing = "0.1"

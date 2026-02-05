@@ -52,6 +52,19 @@ pub struct MetadataStats {
     pub files_removed: usize,
 }
 
+/// Parse an RFC3339 datetime string, returning a rusqlite-compatible error on failure.
+fn parse_datetime(s: &str) -> rusqlite::Result<DateTime<Utc>> {
+    DateTime::parse_from_rfc3339(s)
+        .map(|dt| dt.with_timezone(&Utc))
+        .map_err(|e| {
+            rusqlite::Error::FromSqlConversionFailure(
+                1,
+                rusqlite::types::Type::Text,
+                Box::new(e),
+            )
+        })
+}
+
 impl MetadataStore {
     /// Open or create a metadata store at the given path.
     pub fn open(path: &Path) -> Result<Self> {
@@ -150,9 +163,7 @@ impl MetadataStore {
                 params![path],
                 |row| {
                     let mtime_str: String = row.get(1)?;
-                    let mtime = DateTime::parse_from_rfc3339(&mtime_str)
-                        .map(|dt| dt.with_timezone(&Utc))
-                        .unwrap_or_else(|_| Utc::now());
+                    let mtime = parse_datetime(&mtime_str)?;
                     Ok(FileEntry {
                         path: row.get(0)?,
                         mtime,
@@ -294,9 +305,7 @@ impl MetadataStore {
         let entries = stmt
             .query_map(params![pattern, exclude_pattern], |row| {
                 let mtime_str: String = row.get(1)?;
-                let mtime = DateTime::parse_from_rfc3339(&mtime_str)
-                    .map(|dt| dt.with_timezone(&Utc))
-                    .unwrap_or_else(|_| Utc::now());
+                let mtime = parse_datetime(&mtime_str)?;
                 Ok(FileEntry {
                     path: row.get(0)?,
                     mtime,

@@ -50,6 +50,11 @@ pub struct SearchStats {
 }
 
 impl SearchIndex {
+    /// Register custom tokenizers (jieba for CJK support).
+    fn register_tokenizers(index: &Index) {
+        index.tokenizers().register("jieba", JiebaTokenizer {});
+    }
+
     /// Open or create a search index at the given directory.
     pub fn open(dir: &Path) -> Result<Self> {
         std::fs::create_dir_all(dir)?;
@@ -61,10 +66,7 @@ impl SearchIndex {
             Index::create_in_dir(dir, schema.schema.clone())?
         };
 
-        // Register jieba tokenizer for Chinese
-        index
-            .tokenizers()
-            .register("jieba", JiebaTokenizer {});
+        Self::register_tokenizers(&index);
 
         let reader = index
             .reader_builder()
@@ -84,10 +86,7 @@ impl SearchIndex {
         let schema = Self::build_schema();
         let index = Index::create_in_ram(schema.schema.clone());
 
-        // Register jieba tokenizer for Chinese
-        index
-            .tokenizers()
-            .register("jieba", JiebaTokenizer {});
+        Self::register_tokenizers(&index);
 
         let reader = index
             .reader_builder()

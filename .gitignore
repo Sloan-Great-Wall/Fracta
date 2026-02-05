@@ -43,3 +43,6 @@ apple/Fracta/build/
 # Environment
 .env
 .env.local
+
+# Local Cargo config (machine-specific paths)
+.cargo/config.toml

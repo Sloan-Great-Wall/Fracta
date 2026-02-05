@@ -37,6 +37,10 @@ pub enum IndexError {
     /// Invalid index state.
     #[error("Invalid index state: {0}")]
     InvalidState(String),
+
+    /// Corrupted data in index (e.g., invalid datetime format).
+    #[error("Corrupted index data: {0}")]
+    CorruptedData(String),
 }
 
 /// Result type for index operations.

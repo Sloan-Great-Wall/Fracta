@@ -1,0 +1,19 @@
+# OPTIONAL: Local Cargo configuration for macOS development
+#
+# Copy this file to .cargo/config.toml if you encounter build issues
+# related to missing SDK or compiler paths (common when xcode-select
+# points to CommandLineTools instead of Xcode.app).
+#
+# This file is NOT committed to git (.cargo/config.toml is in .gitignore)
+# because it contains machine-specific paths.
+#
+# Usage:
+#   cp .cargo/config.toml.example .cargo/config.toml
+
+[env]
+SDKROOT = "/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk"
+CC = "/Library/Developer/CommandLineTools/usr/bin/cc"
+AR = "/Library/Developer/CommandLineTools/usr/bin/ar"
+
+[target.aarch64-apple-darwin]
+linker = "/Library/Developer/CommandLineTools/usr/bin/cc"

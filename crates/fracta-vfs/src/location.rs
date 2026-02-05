@@ -128,8 +128,66 @@ impl Location {
     }
 
     /// Whether a given path is inside this Location.
+    ///
+    /// This method resolves symlinks to prevent path traversal attacks.
+    /// For non-existent paths, it resolves the existing parent and checks
+    /// if the remaining components would stay within the Location.
     pub fn contains(&self, path: &Path) -> bool {
-        path.starts_with(&self.root)
+        self.resolve_and_check(path).is_some()
+    }
+
+    /// Resolve a path and verify it stays within this Location.
+    ///
+    /// Returns the canonicalized path if it's inside the Location, None otherwise.
+    /// This prevents symlink escape attacks like `managed_dir/link_to_parent/../../../etc`.
+    fn resolve_and_check(&self, path: &Path) -> Option<PathBuf> {
+        // Canonicalize the Location root (resolve symlinks in root itself)
+        let canonical_root = self.root.canonicalize().ok()?;
+
+        // Try to canonicalize the full path first (works for existing paths)
+        if let Ok(canonical_path) = path.canonicalize() {
+            if canonical_path.starts_with(&canonical_root) {
+                return Some(canonical_path);
+            }
+            return None;
+        }
+
+        // Path doesn't exist yet - resolve the existing parent portion
+        // and verify the full constructed path stays within bounds
+        let mut existing = path.to_path_buf();
+        let mut pending_components = Vec::new();
+
+        // Walk up until we find an existing ancestor
+        while !existing.exists() {
+            if let Some(file_name) = existing.file_name() {
+                pending_components.push(file_name.to_os_string());
+                existing = match existing.parent() {
+                    Some(p) => p.to_path_buf(),
+                    None => return None, // No existing ancestor found
+                };
+            } else {
+                return None;
+            }
+        }
+
+        // Canonicalize the existing ancestor
+        let mut resolved = existing.canonicalize().ok()?;
+
+        // Append the pending components back (in reverse order)
+        for component in pending_components.into_iter().rev() {
+            // Block ".." in pending components to prevent escape
+            if component == ".." {
+                return None;
+            }
+            resolved.push(component);
+        }
+
+        // Final check: is the resolved path inside our root?
+        if resolved.starts_with(&canonical_root) {
+            Some(resolved)
+        } else {
+            None
+        }
     }
 
     /// Get the relative path from Location root.
@@ -474,9 +532,61 @@ mod tests {
 
     #[test]
     fn test_location_contains() {
-        let loc = Location::new("test", "/tmp/test-location");
-        assert!(loc.contains(Path::new("/tmp/test-location/subdir/file.md")));
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        std::fs::create_dir(root.join("subdir")).unwrap();
+        std::fs::write(root.join("subdir/file.md"), "test").unwrap();
+
+        let loc = Location::new("test", &root);
+
+        // Existing file inside location
+        assert!(loc.contains(&root.join("subdir/file.md")));
+        // Non-existent but valid path inside location
+        assert!(loc.contains(&root.join("subdir/new.md")));
+        // Path outside location
         assert!(!loc.contains(Path::new("/tmp/other-location/file.md")));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn test_symlink_escape_blocked() {
+        use std::os::unix::fs::symlink;
+
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+
+        // Create a directory outside the location
+        let outside = TempDir::new().unwrap();
+        let secret_file = outside.path().join("secret.txt");
+        std::fs::write(&secret_file, "sensitive data").unwrap();
+
+        // Create a symlink inside the location pointing outside
+        let evil_link = root.join("escape_link");
+        symlink(outside.path(), &evil_link).unwrap();
+
+        let loc = Location::new("test", &root);
+
+        // The symlink itself exists inside the location
+        assert!(evil_link.exists());
+        // But contains() should return false because it resolves to outside
+        assert!(!loc.contains(&evil_link));
+        // And trying to access files through it should also fail
+        assert!(!loc.contains(&evil_link.join("secret.txt")));
+    }
+
+    #[test]
+    fn test_path_traversal_blocked() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().to_path_buf();
+        std::fs::create_dir(root.join("subdir")).unwrap();
+
+        let loc = Location::new("test", &root);
+
+        // Attempting path traversal with .. should fail
+        // Even though subdir/../../../etc/passwd starts inside location,
+        // it resolves to outside
+        let traversal_path = root.join("subdir/../../../etc/passwd");
+        assert!(!loc.contains(&traversal_path));
     }
 
     #[test]

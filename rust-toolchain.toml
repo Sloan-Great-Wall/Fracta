@@ -1,0 +1,6 @@
+# Fracta Rust toolchain specification
+# This ensures reproducible builds across all developers and CI environments.
+
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]

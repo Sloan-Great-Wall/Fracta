@@ -23,6 +23,7 @@ ADRs capture **why** we made a decision (trade-offs, constraints, alternatives),
 | [0013](0013-open-source-engine-framework-commercial-application.md) | **Open-source Engine + Framework, commercial Application** |
 | [0014](0014-rename-database-to-library.md) | Rename "Database" → "Library" terminology |
 | [0015](0015-index-sqlite-metadata-tantivy-search.md) | **Index: SQLite metadata + Tantivy full-text search** |
+| [0016](0016-apache-2.0-license.md) | **Apache-2.0 license selection** |
 
 ---
 
