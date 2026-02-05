@@ -1,0 +1,4 @@
+module fracta_ffiFFI {
+    header "fracta_ffiFFI.h"
+    export *
+}

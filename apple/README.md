@@ -47,6 +47,7 @@ Full D-pad/joystick navigation:
 - Xcode 16+ with Swift 6
 - macOS 15+ for development
 - iOS 18+ / iPadOS 18+ / visionOS 2+ for deployment
+- Rust with iOS targets (for iOS builds)
 
 ### Generate FFI Bindings
 Before building with real Rust backend:
@@ -61,6 +62,45 @@ cargo run -p fracta-ffi --bin uniffi-bindgen generate \
   --language swift \
   --out-dir apple/Fracta.swiftpm/Sources/Fracta/Generated
 ```
+
+### Build iOS XCFramework
+
+The Rust core needs to be compiled as a static library for iOS. The build script handles this automatically.
+
+**1. Install iOS Rust targets:**
+
+```bash
+rustup target add aarch64-apple-ios aarch64-apple-ios-sim
+```
+
+**2. Run the build script:**
+
+```bash
+./apple/scripts/build-xcframework.sh
+```
+
+This will:
+- Build `libfracta_ffi.a` for iOS device (ARM64)
+- Build `libfracta_ffi.a` for iOS Simulator (ARM64 Apple Silicon)
+- Create `FractaFFI.xcframework` in `apple/Frameworks/`
+
+**3. XCFramework structure:**
+
+```
+apple/Frameworks/FractaFFI.xcframework/
+├── ios-arm64/                    # Device (iPhone/iPad)
+│   ├── libfracta_ffi.a
+│   └── Headers/
+│       └── fracta_ffiFFI.h
+├── ios-arm64-simulator/          # Simulator (Apple Silicon Mac)
+│   ├── libfracta_ffi.a
+│   └── Headers/
+│       └── fracta_ffiFFI.h
+└── Info.plist
+```
+
+> **Note:** The `apple/Frameworks/` directory is in `.gitignore` because the XCFramework is ~120MB.
+> Always regenerate it locally using the build script.
 
 ### Open in Xcode
 1. Open `Fracta.swiftpm` in Xcode

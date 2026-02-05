@@ -36,6 +36,9 @@ apple/Fracta/build/
 # Swift Package Manager
 .build/
 
+# Built frameworks (regenerate with build script)
+apple/Frameworks/
+
 # IDE
 .idea/
 .vscode/
