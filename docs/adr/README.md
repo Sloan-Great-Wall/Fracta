@@ -22,6 +22,7 @@ ADRs capture **why** we made a decision (trade-offs, constraints, alternatives),
 | [0012](0012-past-format-markdown-sot-ai-cache.md) | **Past format: Markdown SOT + AI-derived cache** |
 | [0013](0013-open-source-engine-framework-commercial-application.md) | **Open-source Engine + Framework, commercial Application** |
 | [0014](0014-rename-database-to-library.md) | Rename "Database" → "Library" terminology |
+| [0015](0015-index-sqlite-metadata-tantivy-search.md) | **Index: SQLite metadata + Tantivy full-text search** |
 
 ---
 

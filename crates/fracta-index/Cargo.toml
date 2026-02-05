@@ -1,14 +1,36 @@
 [package]
 name = "fracta-index"
-description = "Fracta Engine: SQLite index + FTS5 — incremental indexing and full-text search"
+description = "Fracta Engine: SQLite metadata index + Tantivy full-text search"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
+# Async
 tokio = { workspace = true }
+
+# Serialization
 serde = { workspace = true }
 serde_json = { workspace = true }
+
+# Error handling
 thiserror = { workspace = true }
+
+# Logging
 tracing = { workspace = true }
+
+# Date/time (for parsing front matter dates)
+chrono = { workspace = true }
+
+# Metadata index (SQLite)
 rusqlite = { workspace = true }
+
+# Full-text search (Tantivy + Chinese tokenizer)
+tantivy = { workspace = true }
+tantivy-jieba = { workspace = true }
+
+# Internal crates
 fracta-vfs = { workspace = true }
+fracta-note = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

@@ -299,8 +299,8 @@ This improves security, makes behavior explainable, and reduces edge-case bugs o
 
 | Subsystem | Crate | Why |
 |-----------|-------|-----|
-| **SQLite** | `rusqlite` (bundled) | Most mature Rust SQLite binding; bundling avoids system version issues |
-| **Full-text search** | SQLite FTS5 (via rusqlite) | Ships with SQLite, zero extra binary size; adequate for personal-data scale |
+| **SQLite** | `rusqlite` (bundled) | Most mature Rust SQLite binding; bundling avoids system version issues; used for metadata index |
+| **Full-text search** | `tantivy` + `tantivy-jieba` | Rust-native search engine (2x faster than Lucene); intelligent CJK tokenization; fuzzy search; see ADR-0015 |
 | **Markdown parser** | `comrak` | GFM superset (tables, task lists, strikethrough, footnotes); full mutable AST for custom block model |
 | **File watching** | `notify` | Cross-platform filesystem watcher; debounced events |
 | **Serialization** | `serde` + `serde_json` + `serde_yaml` | Universal in Rust; needed for all config/cache/schema files |
@@ -324,7 +324,7 @@ fracta/
 ├── Cargo.toml                    # Workspace root
 ├── crates/
 │   ├── fracta-vfs/               # Engine: file/folder CRUD, watching, atomic writes, scope
-│   ├── fracta-index/             # Engine: SQLite index + FTS5
+│   ├── fracta-index/             # Engine: SQLite metadata + Tantivy full-text search
 │   ├── fracta-query/             # Engine: filter/sort/group/aggregate
 │   ├── fracta-note/              # Engine: Markdown parser + block model
 │   ├── fracta-comm/              # Engine: IMAP/CalDAV/RSS/HTTP transports
