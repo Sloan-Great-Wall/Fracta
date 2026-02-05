@@ -65,9 +65,7 @@ Working on the Fracta indexing system.
     std::fs::write(root.join("data.json"), "{}").unwrap(); // Non-markdown file
 
     // Step 3: Verify VFS sees the files correctly
-    let entries = location
-        .walk(&root, &WalkOptions::default())
-        .unwrap();
+    let entries = location.walk(&root, &WalkOptions::default()).unwrap();
     assert_eq!(entries.len(), 4);
     assert!(entries.iter().all(|e| e.scope == Scope::Managed));
 

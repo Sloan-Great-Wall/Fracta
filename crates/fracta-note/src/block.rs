@@ -12,15 +12,10 @@ use serde::{Deserialize, Serialize};
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Block {
     /// Heading (h1–h6).
-    Heading {
-        level: u8,
-        content: Vec<Inline>,
-    },
+    Heading { level: u8, content: Vec<Inline> },
 
     /// A paragraph of inline content.
-    Paragraph {
-        content: Vec<Inline>,
-    },
+    Paragraph { content: Vec<Inline> },
 
     /// Fenced or indented code block.
     CodeBlock {
@@ -29,9 +24,7 @@ pub enum Block {
     },
 
     /// Block quote (may contain nested blocks).
-    BlockQuote {
-        children: Vec<Block>,
-    },
+    BlockQuote { children: Vec<Block> },
 
     /// Ordered or unordered list.
     List {
@@ -50,9 +43,7 @@ pub enum Block {
     ThematicBreak,
 
     /// Raw HTML block (preserved as-is).
-    HtmlBlock {
-        html: String,
-    },
+    HtmlBlock { html: String },
 }
 
 /// A list item, optionally a task list item.

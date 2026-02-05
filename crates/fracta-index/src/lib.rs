@@ -493,7 +493,7 @@ tags: [AI, 学习]
         // Create various file types
         std::fs::write(temp.path().join("doc.md"), "# Markdown").unwrap();
         std::fs::write(temp.path().join("data.json"), "{}").unwrap();
-        std::fs::write(temp.path().join("image.png"), &[0u8; 100]).unwrap();
+        std::fs::write(temp.path().join("image.png"), [0u8; 100]).unwrap();
 
         let mut index = Index::open_in_memory().unwrap();
         let stats = index.build_full(&location).unwrap();

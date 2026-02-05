@@ -48,7 +48,7 @@ pub struct Location {
 }
 
 /// Options for recursive directory traversal.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct WalkOptions {
     /// Include entries with Ignored scope in results.
     /// When false, ignored directories are not recursed into.
@@ -56,15 +56,6 @@ pub struct WalkOptions {
 
     /// Maximum recursion depth (None = unlimited).
     pub max_depth: Option<usize>,
-}
-
-impl Default for WalkOptions {
-    fn default() -> Self {
-        Self {
-            include_ignored: false,
-            max_depth: None,
-        }
-    }
 }
 
 // ── Constructors ───────────────────────────────────────────────────────
@@ -113,8 +104,8 @@ impl Location {
     /// Reload ignore rules from disk.
     pub fn reload_ignore_rules(&mut self) -> VfsResult<()> {
         let ignore_path = self.root.join(FRACTA_DIR).join("config").join("ignore");
-        self.ignore_rules = IgnoreRules::load(&ignore_path)
-            .map_err(|e| VfsError::Io { source: e })?;
+        self.ignore_rules =
+            IgnoreRules::load(&ignore_path).map_err(|e| VfsError::Io { source: e })?;
         Ok(())
     }
 }
@@ -240,9 +231,7 @@ impl Location {
 
         let read_dir = std::fs::read_dir(dir).map_err(|e| match e.kind() {
             std::io::ErrorKind::NotFound => VfsError::NotFound(dir.to_path_buf()),
-            std::io::ErrorKind::PermissionDenied => {
-                VfsError::PermissionDenied(dir.to_path_buf())
-            }
+            std::io::ErrorKind::PermissionDenied => VfsError::PermissionDenied(dir.to_path_buf()),
             _ => VfsError::Io { source: e },
         })?;
 
@@ -259,12 +248,10 @@ impl Location {
         }
 
         // Sort: folders first, then alphabetical (case-insensitive)
-        entries.sort_by(|a, b| {
-            match (&a.kind, &b.kind) {
-                (EntryKind::Folder, EntryKind::File) => std::cmp::Ordering::Less,
-                (EntryKind::File, EntryKind::Folder) => std::cmp::Ordering::Greater,
-                _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-            }
+        entries.sort_by(|a, b| match (&a.kind, &b.kind) {
+            (EntryKind::Folder, EntryKind::File) => std::cmp::Ordering::Less,
+            (EntryKind::File, EntryKind::Folder) => std::cmp::Ordering::Greater,
+            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
         });
 
         Ok(entries)
@@ -299,9 +286,7 @@ impl Location {
 
         let read_dir = std::fs::read_dir(dir).map_err(|e| match e.kind() {
             std::io::ErrorKind::NotFound => VfsError::NotFound(dir.to_path_buf()),
-            std::io::ErrorKind::PermissionDenied => {
-                VfsError::PermissionDenied(dir.to_path_buf())
-            }
+            std::io::ErrorKind::PermissionDenied => VfsError::PermissionDenied(dir.to_path_buf()),
             _ => VfsError::Io { source: e },
         })?;
 
@@ -358,9 +343,7 @@ impl Location {
             return Err(VfsError::AlreadyExists(path.to_path_buf()));
         }
         std::fs::create_dir(path).map_err(|e| match e.kind() {
-            std::io::ErrorKind::PermissionDenied => {
-                VfsError::PermissionDenied(path.to_path_buf())
-            }
+            std::io::ErrorKind::PermissionDenied => VfsError::PermissionDenied(path.to_path_buf()),
             _ => VfsError::Io { source: e },
         })
     }
@@ -381,9 +364,7 @@ impl Location {
         }
         std::fs::read(path).map_err(|e| match e.kind() {
             std::io::ErrorKind::NotFound => VfsError::NotFound(path.to_path_buf()),
-            std::io::ErrorKind::PermissionDenied => {
-                VfsError::PermissionDenied(path.to_path_buf())
-            }
+            std::io::ErrorKind::PermissionDenied => VfsError::PermissionDenied(path.to_path_buf()),
             _ => VfsError::Io { source: e },
         })
     }
@@ -392,10 +373,7 @@ impl Location {
     pub fn read_file_string(&self, path: &Path) -> VfsResult<String> {
         let bytes = self.read_file(path)?;
         String::from_utf8(bytes).map_err(|_| VfsError::Io {
-            source: std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "file is not valid UTF-8",
-            ),
+            source: std::io::Error::new(std::io::ErrorKind::InvalidData, "file is not valid UTF-8"),
         })
     }
 
@@ -426,10 +404,7 @@ impl Location {
         }
 
         let file_name = from.file_name().ok_or_else(|| VfsError::Io {
-            source: std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "path has no file name",
-            ),
+            source: std::io::Error::new(std::io::ErrorKind::InvalidInput, "path has no file name"),
         })?;
         let dest = to_dir.join(file_name);
 
@@ -449,9 +424,7 @@ impl Location {
             return Err(VfsError::NotFound(path.to_path_buf()));
         }
         std::fs::remove_file(path).map_err(|e| match e.kind() {
-            std::io::ErrorKind::PermissionDenied => {
-                VfsError::PermissionDenied(path.to_path_buf())
-            }
+            std::io::ErrorKind::PermissionDenied => VfsError::PermissionDenied(path.to_path_buf()),
             _ => VfsError::Io { source: e },
         })
     }
@@ -463,9 +436,7 @@ impl Location {
             return Err(VfsError::NotFound(path.to_path_buf()));
         }
         std::fs::remove_dir_all(path).map_err(|e| match e.kind() {
-            std::io::ErrorKind::PermissionDenied => {
-                VfsError::PermissionDenied(path.to_path_buf())
-            }
+            std::io::ErrorKind::PermissionDenied => VfsError::PermissionDenied(path.to_path_buf()),
             _ => VfsError::Io { source: e },
         })
     }
@@ -488,8 +459,7 @@ impl Location {
         };
 
         let extension = if kind == EntryKind::File {
-            path.extension()
-                .map(|e| e.to_string_lossy().to_lowercase())
+            path.extension().map(|e| e.to_string_lossy().to_lowercase())
         } else {
             None
         };
@@ -502,7 +472,11 @@ impl Location {
             name,
             extension,
             size: metadata.len(),
-            modified: metadata.modified().ok().map(DateTime::from).unwrap_or_default(),
+            modified: metadata
+                .modified()
+                .ok()
+                .map(DateTime::from)
+                .unwrap_or_default(),
             created: metadata.created().ok().map(DateTime::from),
             scope,
         }
@@ -674,7 +648,10 @@ mod tests {
         // readme.md → Managed
         assert_eq!(loc.scope_of(&root.join("readme.md")), Some(Scope::Managed));
         // node_modules/ → Ignored
-        assert_eq!(loc.scope_of(&root.join("node_modules")), Some(Scope::Ignored));
+        assert_eq!(
+            loc.scope_of(&root.join("node_modules")),
+            Some(Scope::Ignored)
+        );
         // .DS_Store → Ignored
         assert_eq!(loc.scope_of(&root.join(".DS_Store")), Some(Scope::Ignored));
         // .fracta/ → Managed (always)
@@ -738,7 +715,10 @@ mod tests {
         assert!(!names.contains(&"pkg.json"));
 
         // Walk with include_ignored: everything visible
-        let opts = WalkOptions { include_ignored: true, max_depth: None };
+        let opts = WalkOptions {
+            include_ignored: true,
+            max_depth: None,
+        };
         let entries = loc.walk(&root, &opts).unwrap();
         let names: Vec<_> = entries.iter().map(|e| e.name.as_str()).collect();
         assert!(names.contains(&"readme.md"));
@@ -762,7 +742,10 @@ mod tests {
         };
 
         // Depth 1: only immediate children
-        let opts = WalkOptions { include_ignored: false, max_depth: Some(1) };
+        let opts = WalkOptions {
+            include_ignored: false,
+            max_depth: Some(1),
+        };
         let entries = loc.walk(&root, &opts).unwrap();
         assert_eq!(entries.len(), 1); // just "a/"
         assert_eq!(entries[0].name, "a");
@@ -884,7 +867,9 @@ mod tests {
         loc.create_folder(&root.join("dest")).unwrap();
         loc.create_file(&root.join("file.md"), b"data").unwrap();
 
-        let new_path = loc.move_entry(&root.join("file.md"), &root.join("dest")).unwrap();
+        let new_path = loc
+            .move_entry(&root.join("file.md"), &root.join("dest"))
+            .unwrap();
         assert_eq!(new_path, root.join("dest/file.md"));
         assert!(!root.join("file.md").exists());
         assert_eq!(loc.read_file_string(&new_path).unwrap(), "data");
@@ -897,7 +882,9 @@ mod tests {
         let mut loc = Location::new("test", &root);
         loc.init().unwrap();
 
-        let err = loc.create_file(&root.join(".fracta/hack.txt"), b"bad").unwrap_err();
+        let err = loc
+            .create_file(&root.join(".fracta/hack.txt"), b"bad")
+            .unwrap_err();
         assert!(matches!(err, VfsError::PermissionDenied(_)));
     }
 
@@ -906,7 +893,9 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let loc = Location::new("test", tmp.path());
 
-        let err = loc.create_file(Path::new("/tmp/outside.txt"), b"bad").unwrap_err();
+        let err = loc
+            .create_file(Path::new("/tmp/outside.txt"), b"bad")
+            .unwrap_err();
         assert!(matches!(err, VfsError::OutsideLocation(_)));
     }
 

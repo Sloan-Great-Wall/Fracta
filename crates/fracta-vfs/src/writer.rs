@@ -26,18 +26,18 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> VfsResult<()> {
     })?;
 
     // Create a temp file in the same directory (ensures same filesystem for rename)
-    let mut temp = tempfile::NamedTempFile::new_in(parent).map_err(|e| {
-        VfsError::AtomicWriteFailed {
+    let mut temp =
+        tempfile::NamedTempFile::new_in(parent).map_err(|e| VfsError::AtomicWriteFailed {
             path: path.to_path_buf(),
             reason: format!("failed to create temp file: {e}"),
-        }
-    })?;
+        })?;
 
     // Write all data
-    temp.write_all(data).map_err(|e| VfsError::AtomicWriteFailed {
-        path: path.to_path_buf(),
-        reason: format!("failed to write data: {e}"),
-    })?;
+    temp.write_all(data)
+        .map_err(|e| VfsError::AtomicWriteFailed {
+            path: path.to_path_buf(),
+            reason: format!("failed to write data: {e}"),
+        })?;
 
     // Flush to OS
     temp.flush().map_err(|e| VfsError::AtomicWriteFailed {
@@ -46,18 +46,19 @@ pub fn atomic_write(path: &Path, data: &[u8]) -> VfsResult<()> {
     })?;
 
     // Sync to disk (fsync)
-    temp.as_file().sync_all().map_err(|e| {
-        VfsError::AtomicWriteFailed {
+    temp.as_file()
+        .sync_all()
+        .map_err(|e| VfsError::AtomicWriteFailed {
             path: path.to_path_buf(),
             reason: format!("failed to sync: {e}"),
-        }
-    })?;
+        })?;
 
     // Atomic rename (this is the commit point)
-    temp.persist(path).map_err(|e| VfsError::AtomicWriteFailed {
-        path: path.to_path_buf(),
-        reason: format!("failed to rename: {e}"),
-    })?;
+    temp.persist(path)
+        .map_err(|e| VfsError::AtomicWriteFailed {
+            path: path.to_path_buf(),
+            reason: format!("failed to rename: {e}"),
+        })?;
 
     Ok(())
 }

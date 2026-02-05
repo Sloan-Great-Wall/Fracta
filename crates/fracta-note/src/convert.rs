@@ -20,14 +20,26 @@ fn node_to_block<'a>(node: &'a AstNode<'a>) -> Option<Block> {
     // Extract what we need from the node data, then drop the borrow
     // before recursing into children (which also borrow node data).
     enum BlockKind {
-        Heading { level: u8 },
+        Heading {
+            level: u8,
+        },
         Paragraph,
-        CodeBlock { language: Option<String>, code: String },
+        CodeBlock {
+            language: Option<String>,
+            code: String,
+        },
         BlockQuote,
-        List { ordered: bool, start: Option<usize> },
-        Table { alignments: Vec<Alignment> },
+        List {
+            ordered: bool,
+            start: Option<usize>,
+        },
+        Table {
+            alignments: Vec<Alignment>,
+        },
         ThematicBreak,
-        HtmlBlock { html: String },
+        HtmlBlock {
+            html: String,
+        },
         Skip,
     }
 

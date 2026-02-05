@@ -33,10 +33,7 @@ impl FrontMatter {
             return None;
         }
 
-        Some(Self {
-            raw: yaml,
-            fields,
-        })
+        Some(Self { raw: yaml, fields })
     }
 
     /// Get a string field by key.
@@ -98,10 +95,10 @@ mod tests {
 
     #[test]
     fn test_parse_numeric_fields() {
-        let input = "---\nmood: 7\nscore: 3.14\n---\n";
+        let input = "---\nmood: 7\nscore: 4.56\n---\n";
         let fm = FrontMatter::parse(input).unwrap();
         assert_eq!(fm.get_i64("mood"), Some(7));
-        assert_eq!(fm.get_f64("score"), Some(3.14));
+        assert_eq!(fm.get_f64("score"), Some(4.56));
     }
 
     #[test]

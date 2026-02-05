@@ -273,20 +273,16 @@ mod tests {
         let doc = Document::parse("[Fracta](https://fracta.app)\n");
 
         match &doc.blocks[0] {
-            Block::Paragraph { content } => {
-                match &content[0] {
-                    Inline::Link {
-                        url, children, ..
-                    } => {
-                        assert_eq!(url, "https://fracta.app");
-                        match &children[0] {
-                            Inline::Text { value } => assert_eq!(value, "Fracta"),
-                            _ => panic!("expected Text in link"),
-                        }
+            Block::Paragraph { content } => match &content[0] {
+                Inline::Link { url, children, .. } => {
+                    assert_eq!(url, "https://fracta.app");
+                    match &children[0] {
+                        Inline::Text { value } => assert_eq!(value, "Fracta"),
+                        _ => panic!("expected Text in link"),
                     }
-                    _ => panic!("expected Link"),
                 }
-            }
+                _ => panic!("expected Link"),
+            },
             _ => panic!("expected Paragraph"),
         }
     }
@@ -314,12 +310,10 @@ mod tests {
             Block::BlockQuote { children } => {
                 assert_eq!(children.len(), 1);
                 match &children[0] {
-                    Block::Paragraph { content } => {
-                        match &content[0] {
-                            Inline::Text { value } => assert_eq!(value, "A wise quote"),
-                            _ => panic!("expected Text"),
-                        }
-                    }
+                    Block::Paragraph { content } => match &content[0] {
+                        Inline::Text { value } => assert_eq!(value, "A wise quote"),
+                        _ => panic!("expected Text"),
+                    },
                     _ => panic!("expected Paragraph in BlockQuote"),
                 }
             }

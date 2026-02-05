@@ -57,11 +57,7 @@ fn parse_datetime(s: &str) -> rusqlite::Result<DateTime<Utc>> {
     DateTime::parse_from_rfc3339(s)
         .map(|dt| dt.with_timezone(&Utc))
         .map_err(|e| {
-            rusqlite::Error::FromSqlConversionFailure(
-                1,
-                rusqlite::types::Type::Text,
-                Box::new(e),
-            )
+            rusqlite::Error::FromSqlConversionFailure(1, rusqlite::types::Type::Text, Box::new(e))
         })
 }
 
@@ -149,7 +145,13 @@ impl MetadataStore {
                 date = excluded.date,
                 area = excluded.area
             "#,
-            params![path, metadata.title, tags_json, metadata.date, metadata.area],
+            params![
+                path,
+                metadata.title,
+                tags_json,
+                metadata.date,
+                metadata.area
+            ],
         )?;
         Ok(())
     }
@@ -255,7 +257,8 @@ impl MetadataStore {
             [],
         )?;
 
-        self.conn.execute("DROP TABLE IF EXISTS current_paths", [])?;
+        self.conn
+            .execute("DROP TABLE IF EXISTS current_paths", [])?;
 
         Ok(deleted)
     }
@@ -270,11 +273,11 @@ impl MetadataStore {
 
     /// Get number of indexed files.
     pub fn indexed_count(&self) -> Result<usize> {
-        let count: i64 = self.conn.query_row(
-            "SELECT COUNT(*) FROM files WHERE indexed = 1",
-            [],
-            |row| row.get(0),
-        )?;
+        let count: i64 =
+            self.conn
+                .query_row("SELECT COUNT(*) FROM files WHERE indexed = 1", [], |row| {
+                    row.get(0)
+                })?;
         Ok(count as usize)
     }
 
@@ -358,7 +361,8 @@ impl MetadataStore {
         params_vec.push(Box::new(limit as i64));
 
         let mut stmt = self.conn.prepare(&sql)?;
-        let params_refs: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
+        let params_refs: Vec<&dyn rusqlite::ToSql> =
+            params_vec.iter().map(|p| p.as_ref()).collect();
         let paths = stmt
             .query_map(params_refs.as_slice(), |row| row.get(0))?
             .collect::<std::result::Result<Vec<String>, _>>()?;
