@@ -39,6 +39,7 @@ apple/Fracta/build/
 # IDE
 .idea/
 .vscode/
+.cursor/
 
 # Environment
 .env
