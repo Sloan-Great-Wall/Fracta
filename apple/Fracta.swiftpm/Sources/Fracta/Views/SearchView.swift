@@ -190,9 +190,17 @@ struct SearchView: View {
                 focusedIndex = 0
             }
             #else
-            // Real search
+            // Real search - safely handle missing location
+            guard let location = appState.currentLocation else {
+                await MainActor.run {
+                    results = []
+                    isSearching = false
+                }
+                return
+            }
+
             do {
-                let index = try FractaBridge.shared.openIndex(location: appState.currentLocation!)
+                let index = try FractaBridge.shared.openIndex(location: location)
                 let hits = try index.search(query: query, limit: 50)
                 await MainActor.run {
                     results = hits
