@@ -290,8 +290,9 @@ class FractaBridge: ObservableObject {
 
     // MARK: - Version
 
-    var ffiVersion: String {
-        ffiVersion()
+    var version: String {
+        // Call the global ffiVersion() function from the generated FFI module
+        Fracta.ffiVersion()
     }
 
     // MARK: - Cleanup
@@ -314,29 +315,32 @@ class FractaBridge: ObservableObject {
 enum BridgeError: LocalizedError {
     case notInitialized
     case notFound(String)
-    case outsideScope(String)
+    case outsideLocation(String)
+    case permissionDenied(String)
     case alreadyExists(String)
     case ioError(String)
-    case invalidData(String)
-    case permission(String)
-    case other(String)
+    case indexError(String)
+    case invalidArgument(String)
+    case internalError(String)
 
     static func from(_ error: FfiError) -> BridgeError {
         switch error {
         case .NotFound(let path):
             return .notFound(path)
-        case .OutsideScope(let path):
-            return .outsideScope(path)
+        case .OutsideLocation(let path):
+            return .outsideLocation(path)
+        case .PermissionDenied(let path):
+            return .permissionDenied(path)
         case .AlreadyExists(let path):
             return .alreadyExists(path)
         case .Io(let message):
             return .ioError(message)
-        case .InvalidData(let message):
-            return .invalidData(message)
-        case .Permission(let path):
-            return .permission(path)
-        case .Other(let message):
-            return .other(message)
+        case .Index(let message):
+            return .indexError(message)
+        case .InvalidArgument(let message):
+            return .invalidArgument(message)
+        case .Internal(let message):
+            return .internalError(message)
         }
     }
 
@@ -346,18 +350,20 @@ enum BridgeError: LocalizedError {
             return "FFI bridge is not initialized"
         case .notFound(let path):
             return "Not found: \(path)"
-        case .outsideScope(let path):
-            return "Path outside managed scope: \(path)"
+        case .outsideLocation(let path):
+            return "Path outside managed location: \(path)"
+        case .permissionDenied(let path):
+            return "Permission denied: \(path)"
         case .alreadyExists(let path):
             return "Already exists: \(path)"
         case .ioError(let message):
             return "I/O error: \(message)"
-        case .invalidData(let message):
-            return "Invalid data: \(message)"
-        case .permission(let path):
-            return "Permission denied: \(path)"
-        case .other(let message):
-            return message
+        case .indexError(let message):
+            return "Index error: \(message)"
+        case .invalidArgument(let message):
+            return "Invalid argument: \(message)"
+        case .internalError(let message):
+            return "Internal error: \(message)"
         }
     }
 }

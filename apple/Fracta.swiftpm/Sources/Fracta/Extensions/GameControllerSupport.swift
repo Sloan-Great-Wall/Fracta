@@ -78,27 +78,29 @@ class GameControllerManager: ObservableObject {
 
     private func configureExtendedGamepad(_ gamepad: GCExtendedGamepad) {
         // D-pad navigation is handled by SwiftUI's focus system
-        // But we can add haptic feedback
+        // But we can add haptic feedback on iOS
 
+        #if os(iOS)
         gamepad.buttonA.pressedChangedHandler = { [weak self] _, _, pressed in
             if pressed {
-                self?.provideFeedback(.selection)
+                self?.provideHapticFeedback(.selection)
             }
         }
 
         gamepad.buttonB.pressedChangedHandler = { [weak self] _, _, pressed in
             if pressed {
-                self?.provideFeedback(.light)
+                self?.provideHapticFeedback(.light)
             }
         }
-    }
-
-    private func provideFeedback(_ style: UIImpactFeedbackGenerator.FeedbackStyle) {
-        #if os(iOS)
-        let generator = UIImpactFeedbackGenerator(style: style)
-        generator.impactOccurred()
         #endif
     }
+
+    #if os(iOS)
+    private func provideHapticFeedback(_ style: UIImpactFeedbackGenerator.FeedbackStyle) {
+        let generator = UIImpactFeedbackGenerator(style: style)
+        generator.impactOccurred()
+    }
+    #endif
 }
 
 // MARK: - Focus Navigation Helpers
