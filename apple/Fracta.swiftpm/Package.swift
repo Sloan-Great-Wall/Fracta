@@ -9,7 +9,7 @@ let package = Package(
         .visionOS(.v2)
     ],
     products: [
-        .library(name: "Fracta", targets: ["Fracta"])
+        .executable(name: "Fracta", targets: ["Fracta"])
     ],
     targets: [
         // C headers for FFI (module map for Clang importer)
@@ -19,7 +19,7 @@ let package = Package(
             publicHeadersPath: "."
         ),
         // Main application target
-        .target(
+        .executableTarget(
             name: "Fracta",
             dependencies: ["fracta_ffiFFI"],
             path: "Sources/Fracta",
@@ -28,10 +28,12 @@ let package = Package(
                 .linkedLibrary("fracta_ffi"),
                 .linkedLibrary("sqlite3"),
                 .linkedLibrary("c++"),
-                .unsafeFlags([
-                    "-L../../Frameworks/FractaFFI.xcframework/ios-arm64",
-                    "-L../../Frameworks/FractaFFI.xcframework/ios-arm64-simulator"
-                ])
+                // iOS device
+                .unsafeFlags(["-L../../Frameworks/FractaFFI.xcframework/ios-arm64"], .when(platforms: [.iOS])),
+                // iOS simulator
+                .unsafeFlags(["-L../../Frameworks/FractaFFI.xcframework/ios-arm64-simulator"], .when(platforms: [.iOS])),
+                // macOS (need to build macOS framework separately)
+                .unsafeFlags(["-L../../Frameworks/FractaFFI.xcframework/macos-arm64"], .when(platforms: [.macOS]))
             ]
         )
     ]

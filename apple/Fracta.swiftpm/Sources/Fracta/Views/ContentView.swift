@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Main content view with adaptive layout for all platforms
 struct ContentView: View {
@@ -13,18 +14,25 @@ struct ContentView: View {
     }
 
     var body: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            SidebarView()
-                .focused($focusedSection, equals: .sidebar)
-                .glassSidebar()
-        } content: {
-            BrowserView()
-                .focused($focusedSection, equals: .browser)
-        } detail: {
-            DetailView()
-                .focused($focusedSection, equals: .detail)
+        ZStack {
+            NavigationSplitView(columnVisibility: $columnVisibility) {
+                SidebarView()
+                    .focused($focusedSection, equals: .sidebar)
+                    .glassSidebar()
+            } content: {
+                BrowserView()
+                    .focused($focusedSection, equals: .browser)
+            } detail: {
+                DetailView()
+                    .focused($focusedSection, equals: .detail)
+            }
+            .navigationSplitViewStyle(.balanced)
+
+            // Loading overlay
+            if appState.isLoading {
+                LoadingOverlay(message: appState.loadingMessage)
+            }
         }
-        .navigationSplitViewStyle(.balanced)
         #if os(macOS)
         .frame(minWidth: 800, minHeight: 500)
         #endif
@@ -34,6 +42,46 @@ struct ContentView: View {
         }
         .onMoveCommand { direction in
             handleMoveCommand(direction)
+        }
+        // Folder picker
+        .fileImporter(
+            isPresented: $appState.showingFolderPicker,
+            allowedContentTypes: [.folder],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                if let url = urls.first {
+                    // Start accessing security-scoped resource
+                    if url.startAccessingSecurityScopedResource() {
+                        appState.openLocation(at: url)
+                        // Note: stopAccessingSecurityScopedResource() should be called
+                        // when the app is done with the folder, but we keep it open
+                    } else {
+                        appState.openLocation(at: url)
+                    }
+                }
+            case .failure(let error):
+                appState.showError(.locationOpenFailed(error.localizedDescription))
+            }
+        }
+        // Error alert
+        .alert(
+            appState.currentError?.title ?? "Error",
+            isPresented: $appState.showingError,
+            presenting: appState.currentError
+        ) { _ in
+            Button("OK") {
+                appState.dismissError()
+            }
+        } message: { error in
+            VStack {
+                Text(error.errorDescription ?? "An unknown error occurred")
+                if let suggestion = error.recoverySuggestion {
+                    Text(suggestion)
+                        .font(.caption)
+                }
+            }
         }
     }
 
@@ -61,6 +109,32 @@ struct ContentView: View {
     }
 }
 
+/// Loading overlay with blur background
+struct LoadingOverlay: View {
+    let message: String
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.3)
+                .ignoresSafeArea()
+
+            VStack(spacing: Spacing.lg) {
+                ProgressView()
+                    .scaleEffect(1.5)
+                    .tint(.white)
+
+                if !message.isEmpty {
+                    Text(message)
+                        .font(.glassHeadline)
+                        .foregroundStyle(.white)
+                }
+            }
+            .padding(Spacing.xl)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        }
+    }
+}
+
 /// Sidebar with locations and quick access
 struct SidebarView: View {
     @EnvironmentObject var appState: AppState
@@ -70,14 +144,26 @@ struct SidebarView: View {
             // Locations section
             Section("Locations") {
                 if let location = appState.currentLocation {
-                    Label(location.label, systemImage: "folder.fill")
-                        .tag(location.id)
-                } else {
-                    Button {
-                        // TODO: Add location picker
-                    } label: {
-                        Label("Add Location", systemImage: "plus.circle")
+                    HStack {
+                        Label(location.label, systemImage: "folder.fill")
+                        Spacer()
+                        Button {
+                            appState.closeLocation()
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
                     }
+                }
+
+                Button {
+                    appState.showingFolderPicker = true
+                } label: {
+                    Label(
+                        appState.currentLocation == nil ? "Open Location" : "Open Another",
+                        systemImage: "plus.circle"
+                    )
                 }
             }
 
@@ -196,11 +282,12 @@ struct BrowserView: View {
                 .foregroundStyle(.tertiary)
 
             Button {
-                // TODO: Show folder picker
+                appState.showingFolderPicker = true
             } label: {
                 Label("Open Location", systemImage: "folder")
             }
             .buttonStyle(.borderedProminent)
+            .keyboardShortcut("o", modifiers: .command)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

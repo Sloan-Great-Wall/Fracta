@@ -201,6 +201,7 @@ struct SearchView: View {
                 await MainActor.run {
                     results = []
                     isSearching = false
+                    appState.showError(.searchFailed(error.localizedDescription))
                 }
             }
         }
