@@ -246,7 +246,7 @@ class FractaBridge: ObservableObject {
     }
 
     /// Build full index
-    func buildFullIndex(locationPath: String) throws -> (filesProcessed: UInt32, filesIndexed: UInt32) {
+    func buildFullIndex(locationPath: String) throws -> (filesScanned: UInt32, markdownIndexed: UInt32) {
         guard let location = locations[locationPath] else {
             throw BridgeError.notFound("Location not open: \(locationPath)")
         }
@@ -255,14 +255,14 @@ class FractaBridge: ObservableObject {
 
         do {
             let stats = try index.buildFull(location: location)
-            return (stats.filesProcessed, stats.filesIndexed)
+            return (stats.filesScanned, stats.markdownIndexed)
         } catch let error as FfiError {
             throw BridgeError.from(error)
         }
     }
 
     /// Update index incrementally
-    func updateIndex(locationPath: String) throws -> (filesProcessed: UInt32, filesIndexed: UInt32) {
+    func updateIndex(locationPath: String) throws -> (filesScanned: UInt32, markdownIndexed: UInt32) {
         guard let location = locations[locationPath] else {
             throw BridgeError.notFound("Location not open: \(locationPath)")
         }
@@ -271,7 +271,7 @@ class FractaBridge: ObservableObject {
 
         do {
             let stats = try index.updateIncremental(location: location)
-            return (stats.filesProcessed, stats.filesIndexed)
+            return (stats.filesScanned, stats.markdownIndexed)
         } catch let error as FfiError {
             throw BridgeError.from(error)
         }
