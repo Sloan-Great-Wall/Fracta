@@ -188,6 +188,18 @@ class FractaBridge: ObservableObject {
         return DocumentContent(from: doc)
     }
 
+    /// Read and parse a Markdown file
+    func readDocument(locationPath: String, filePath: String) throws -> DocumentContent {
+        let content = try readFile(locationPath: locationPath, filePath: filePath)
+        return parseDocument(markdown: content)
+    }
+
+    /// Read and parse a Markdown file by absolute path (for folder pages)
+    func readDocumentAtPath(_ path: String) throws -> DocumentContent {
+        let content = try String(contentsOfFile: path, encoding: .utf8)
+        return parseDocument(markdown: content)
+    }
+
     // MARK: - Index Operations
 
     /// Open or create an index for a location

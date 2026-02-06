@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::error::{VfsError, VfsResult};
 use crate::location::FRACTA_DIR;
-use crate::writer::atomic_write_string;
+use crate::writer::{atomic_write_string, ensure_dir};
 
 /// Location settings stored in `.fracta/config/settings.json`.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -44,7 +44,11 @@ impl LocationSettings {
 
     /// Save settings to a Location root directory.
     pub fn save(&self, root: &Path) -> VfsResult<()> {
-        let path = root.join(FRACTA_DIR).join("config").join("settings.json");
+        let config_dir = root.join(FRACTA_DIR).join("config");
+        let path = config_dir.join("settings.json");
+
+        // Ensure the config directory exists before writing
+        ensure_dir(&config_dir)?;
 
         let content = serde_json::to_string_pretty(self).map_err(|e| VfsError::Io {
             source: std::io::Error::new(std::io::ErrorKind::InvalidData, e.to_string()),

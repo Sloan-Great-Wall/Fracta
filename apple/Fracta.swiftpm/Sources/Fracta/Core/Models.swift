@@ -3,11 +3,33 @@ import Foundation
 // MARK: - Location State
 
 /// Represents a managed location (directory tree)
-struct LocationState: Identifiable, Equatable {
+struct LocationState: Identifiable, Equatable, Codable, Hashable {
     let id: UUID
     let label: String
     let rootPath: String
     var isManaged: Bool
+
+    /// Check if this location contains or is contained by another path
+    func overlaps(with path: String) -> Bool {
+        let normalizedSelf = rootPath.hasSuffix("/") ? rootPath : rootPath + "/"
+        let normalizedOther = path.hasSuffix("/") ? path : path + "/"
+        return normalizedSelf.hasPrefix(normalizedOther) || normalizedOther.hasPrefix(normalizedSelf)
+    }
+}
+
+/// Quick access bookmark
+struct QuickAccessItem: Identifiable, Codable, Hashable {
+    let id: UUID
+    let label: String
+    let path: String
+    let icon: String
+
+    init(id: UUID = UUID(), label: String, path: String, icon: String = "folder.fill") {
+        self.id = id
+        self.label = label
+        self.path = path
+        self.icon = icon
+    }
 }
 
 // MARK: - File Item
@@ -140,26 +162,33 @@ enum FileScope: String, Codable {
 /// A parsed Markdown document
 struct DocumentContent: Equatable {
     let title: String?
-    let plainText: String
+    let plainText: String          // Preview only (max 8KB for display)
+    let fullCharacterCount: Int    // Total character count (computed once)
     let hasFrontMatter: Bool
     let tags: [String]
     let area: String?
     let blockCount: Int
 
+    /// Is this a large file with truncated preview?
+    var isTruncated: Bool { fullCharacterCount > plainText.count }
+
     /// Initialize from FFI document
     init(from doc: FfiDocument) {
+        let fullText = doc.plainText()
         self.title = doc.title()
-        self.plainText = doc.plainText()
+        self.fullCharacterCount = fullText.count
+        self.plainText = fullText.count > 8000 ? String(fullText.prefix(8000)) : fullText
         self.hasFrontMatter = doc.hasFrontMatter()
         self.tags = doc.frontMatterStringList(key: "tags") ?? []
         self.area = doc.frontMatterString(key: "area")
         self.blockCount = Int(doc.blockCount())
     }
 
-    /// Manual initializer
+    /// Manual initializer (plainText should already be truncated, fullCharacterCount is original size)
     init(
         title: String?,
         plainText: String,
+        fullCharacterCount: Int,
         hasFrontMatter: Bool,
         tags: [String],
         area: String?,
@@ -167,6 +196,7 @@ struct DocumentContent: Equatable {
     ) {
         self.title = title
         self.plainText = plainText
+        self.fullCharacterCount = fullCharacterCount
         self.hasFrontMatter = hasFrontMatter
         self.tags = tags
         self.area = area

@@ -138,17 +138,37 @@ struct LoadingOverlay: View {
 /// Sidebar with locations and quick access
 struct SidebarView: View {
     @EnvironmentObject var appState: AppState
+    @State private var showingRemoveConfirm: LocationState? = nil
+    @State private var showingQuickAccessPicker: Bool = false
 
     var body: some View {
         List {
-            // Locations section
+            // Locations section (Data Sources)
             Section("Locations") {
-                if let location = appState.currentLocation {
+                ForEach(appState.locations) { location in
                     HStack {
-                        Label(location.label, systemImage: "folder.fill")
-                        Spacer()
                         Button {
-                            appState.closeLocation()
+                            appState.activateLocation(location)
+                        } label: {
+                            HStack {
+                                Image(systemName: "folder.fill")
+                                    .foregroundStyle(appState.activeLocation?.id == location.id ? Color.accentColor : .secondary)
+                                Text(location.label)
+                                    .foregroundStyle(appState.activeLocation?.id == location.id ? .primary : .secondary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+
+                        Spacer()
+
+                        if appState.activeLocation?.id == location.id {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(Color.accentColor)
+                                .font(.caption)
+                        }
+
+                        Button {
+                            showingRemoveConfirm = location
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .foregroundStyle(.secondary)
@@ -160,44 +180,53 @@ struct SidebarView: View {
                 Button {
                     appState.showingFolderPicker = true
                 } label: {
-                    Label(
-                        appState.currentLocation == nil ? "Open Location" : "Open Another",
-                        systemImage: "plus.circle"
-                    )
+                    Label("Add Location", systemImage: "plus.circle")
                 }
             }
 
             // Quick Access section
             Section("Quick Access") {
-                NavigationLink(value: PathItem.folder(path: "inbox")) {
-                    Label("Inbox", systemImage: "tray.fill")
+                ForEach(appState.quickAccessItems) { item in
+                    Button {
+                        appState.navigateTo(path: item.path)
+                    } label: {
+                        Label(item.label, systemImage: item.icon)
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            appState.removeQuickAccess(item)
+                        } label: {
+                            Label("Remove", systemImage: "trash")
+                        }
+                    }
                 }
 
-                NavigationLink(value: PathItem.folder(path: "recent")) {
-                    Label("Recent", systemImage: "clock.fill")
-                }
-
-                NavigationLink(value: PathItem.folder(path: "favorites")) {
-                    Label("Favorites", systemImage: "star.fill")
+                Button {
+                    showingQuickAccessPicker = true
+                } label: {
+                    Label("Add Quick Access", systemImage: "plus.circle")
                 }
             }
 
-            // Areas section (PARA-style)
-            Section("Areas") {
-                NavigationLink(value: PathItem.folder(path: "library")) {
-                    Label("Library", systemImage: "books.vertical.fill")
-                }
-                .tint(.blue)
+            // Areas section (PARA-style) - only show if active location exists
+            if appState.activeLocation != nil {
+                Section("Areas") {
+                    NavigationLink(value: PathItem.folder(path: "library")) {
+                        Label("Library", systemImage: "books.vertical.fill")
+                    }
+                    .tint(.blue)
 
-                NavigationLink(value: PathItem.folder(path: "now")) {
-                    Label("Now", systemImage: "flame.fill")
-                }
-                .tint(.orange)
+                    NavigationLink(value: PathItem.folder(path: "now")) {
+                        Label("Now", systemImage: "flame.fill")
+                    }
+                    .tint(.orange)
 
-                NavigationLink(value: PathItem.folder(path: "past")) {
-                    Label("Past", systemImage: "clock.arrow.circlepath")
+                    NavigationLink(value: PathItem.folder(path: "past")) {
+                        Label("Past", systemImage: "clock.arrow.circlepath")
+                    }
+                    .tint(.purple)
                 }
-                .tint(.purple)
             }
         }
         .listStyle(.sidebar)
@@ -205,6 +234,34 @@ struct SidebarView: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.large)
         #endif
+        .confirmationDialog(
+            "Remove Location",
+            isPresented: Binding(
+                get: { showingRemoveConfirm != nil },
+                set: { if !$0 { showingRemoveConfirm = nil } }
+            ),
+            presenting: showingRemoveConfirm
+        ) { location in
+            Button("Remove", role: .destructive) {
+                appState.removeLocation(location)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { location in
+            Text("Remove '\(location.label)' from Fracta? Your files won't be deleted.")
+        }
+        .fileImporter(
+            isPresented: $showingQuickAccessPicker,
+            allowedContentTypes: [.folder],
+            allowsMultipleSelection: false
+        ) { result in
+            if case .success(let urls) = result, let url = urls.first {
+                appState.addQuickAccess(
+                    path: url.path,
+                    label: url.lastPathComponent,
+                    icon: "folder.fill"
+                )
+            }
+        }
     }
 }
 
@@ -216,6 +273,20 @@ struct BrowserView: View {
     @State private var isLoading: Bool = false
     @State private var errorMessage: String?
     @FocusState private var isFocused: Bool
+
+    /// Current directory name for title
+    private var currentDirectoryName: String {
+        if appState.currentPath.isEmpty {
+            return appState.activeLocation?.label ?? "Files"
+        }
+        return URL(fileURLWithPath: appState.currentPath).lastPathComponent
+    }
+
+    /// Can navigate back?
+    private var canGoBack: Bool {
+        guard let location = appState.activeLocation else { return false }
+        return appState.currentPath != location.rootPath && !appState.currentPath.isEmpty
+    }
 
     var body: some View {
         Group {
@@ -233,14 +304,26 @@ struct BrowserView: View {
                     Button("Retry") { loadFiles() }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if files.isEmpty {
+            } else if appState.activeLocation == nil {
                 emptyBrowserView
+            } else if files.isEmpty {
+                emptyFolderView
             } else {
                 fileListView
             }
         }
-        .navigationTitle(appState.currentLocation?.label ?? "Files")
+        .navigationTitle(currentDirectoryName)
         .toolbar {
+            ToolbarItemGroup(placement: .navigation) {
+                if canGoBack {
+                    Button {
+                        navigateBack()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                    }
+                }
+            }
+
             ToolbarItemGroup {
                 Button {
                     appState.isSearching.toggle()
@@ -264,7 +347,8 @@ struct BrowserView: View {
             prompt: "Search files..."
         )
         .onAppear { loadFiles() }
-        .onChange(of: appState.currentLocation?.rootPath) { _, _ in loadFiles() }
+        .onChange(of: appState.activeLocation?.rootPath) { _, _ in loadFiles() }
+        .onChange(of: appState.currentPath) { _, _ in loadFiles() }
     }
 
     private var emptyBrowserView: some View {
@@ -277,17 +361,39 @@ struct BrowserView: View {
                 .font(.glassHeadline)
                 .foregroundStyle(.secondary)
 
-            Text("Open a folder to start browsing")
+            Text("Add a folder to start browsing")
                 .font(.glassCaption)
                 .foregroundStyle(.tertiary)
 
             Button {
                 appState.showingFolderPicker = true
             } label: {
-                Label("Open Location", systemImage: "folder")
+                Label("Add Location", systemImage: "folder.badge.plus")
             }
             .buttonStyle(.borderedProminent)
             .keyboardShortcut("o", modifiers: .command)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var emptyFolderView: some View {
+        VStack(spacing: Spacing.lg) {
+            Image(systemName: "folder")
+                .font(.system(size: 64))
+                .foregroundStyle(.secondary)
+
+            Text("Empty Folder")
+                .font(.glassHeadline)
+                .foregroundStyle(.secondary)
+
+            if canGoBack {
+                Button {
+                    navigateBack()
+                } label: {
+                    Label("Go Back", systemImage: "chevron.left")
+                }
+                .buttonStyle(.bordered)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -306,6 +412,30 @@ struct BrowserView: View {
                         .onTapGesture {
                             selectFile(file)
                         }
+                        .onTapGesture(count: 2) {
+                            activateFile(file)
+                        }
+                        .contextMenu {
+                            if file.isFolder {
+                                Button {
+                                    appState.addQuickAccess(
+                                        path: file.path,
+                                        label: file.name,
+                                        icon: "folder.fill"
+                                    )
+                                } label: {
+                                    Label("Add to Quick Access", systemImage: "star")
+                                }
+                            }
+
+                            Divider()
+
+                            Button(role: .destructive) {
+                                // TODO: Implement delete
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
                         .focusable()
                     }
                 }
@@ -321,14 +451,23 @@ struct BrowserView: View {
                 }
                 return .handled
             }
+            .onKeyPress(.escape) {
+                if canGoBack {
+                    navigateBack()
+                }
+                return .handled
+            }
         }
     }
 
     private func loadFiles() {
-        guard let location = appState.currentLocation else {
+        guard let location = appState.activeLocation else {
             files = []
             return
         }
+
+        // Use currentPath if set, otherwise use rootPath
+        let pathToLoad = appState.currentPath.isEmpty ? location.rootPath : appState.currentPath
 
         isLoading = true
         errorMessage = nil
@@ -337,7 +476,7 @@ struct BrowserView: View {
             do {
                 let items = try FractaBridge.shared.listDirectory(
                     locationPath: location.rootPath,
-                    directoryPath: location.rootPath
+                    directoryPath: pathToLoad
                 )
                 await MainActor.run {
                     files = items
@@ -349,6 +488,18 @@ struct BrowserView: View {
                     isLoading = false
                 }
             }
+        }
+    }
+
+    private func navigateBack() {
+        guard let location = appState.activeLocation else { return }
+        let parentPath = URL(fileURLWithPath: appState.currentPath).deletingLastPathComponent().path
+
+        // Don't go above the location root
+        if parentPath.hasPrefix(location.rootPath) || parentPath == location.rootPath {
+            appState.navigateTo(path: parentPath)
+        } else {
+            appState.navigateTo(path: location.rootPath)
         }
     }
 
@@ -375,7 +526,8 @@ struct BrowserView: View {
 
     private func activateFile(_ file: FileItem) {
         if file.isFolder {
-            appState.navigationPath.append(.folder(path: file.path))
+            // Navigate into folder
+            appState.navigateTo(path: file.path)
         } else {
             appState.selectedFile = file
             appState.viewMode = .document
@@ -383,7 +535,7 @@ struct BrowserView: View {
     }
 }
 
-/// Detail view showing document preview
+/// Detail view showing document preview or folder page
 struct DetailView: View {
     @EnvironmentObject var appState: AppState
 
@@ -391,10 +543,66 @@ struct DetailView: View {
         Group {
             if let file = appState.selectedFile {
                 DocumentPreviewView(file: file)
+            } else if let folderPage = appState.folderPageContent {
+                // Show folder page content
+                FolderPageView(content: folderPage, folderPath: appState.currentPath)
             } else {
                 EmptyDetailView()
             }
         }
+    }
+}
+
+/// View for displaying folder page content (same-named .md file)
+struct FolderPageView: View {
+    let content: DocumentContent
+    let folderPath: String
+
+    var folderName: String {
+        URL(fileURLWithPath: folderPath).lastPathComponent
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Spacing.lg) {
+                // Header
+                HStack {
+                    Image(systemName: "folder.fill")
+                        .font(.title)
+                        .foregroundStyle(Color.accentColor)
+
+                    Text(content.title ?? folderName)
+                        .font(.largeTitle.bold())
+                }
+                .padding(.bottom, Spacing.sm)
+
+                // Tags if present
+                if !content.tags.isEmpty {
+                    HStack {
+                        ForEach(content.tags, id: \.self) { tag in
+                            Text(tag)
+                                .font(.caption)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.accentColor.opacity(0.2))
+                                .clipShape(Capsule())
+                        }
+                    }
+                }
+
+                Divider()
+
+                // Content
+                Text(content.plainText)
+                    .font(.body)
+                    .textSelection(.enabled)
+
+                Spacer()
+            }
+            .padding(Spacing.xl)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(.ultraThinMaterial)
     }
 }
 

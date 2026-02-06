@@ -10,7 +10,6 @@ struct OnboardingView: View {
     enum OnboardingStep: Int, CaseIterable {
         case welcome
         case permissions
-        case dataSources
         case ready
     }
 
@@ -27,9 +26,6 @@ struct OnboardingView: View {
 
                 permissionsStep
                     .tag(OnboardingStep.permissions)
-
-                dataSourcesStep
-                    .tag(OnboardingStep.dataSources)
 
                 readyStep
                     .tag(OnboardingStep.ready)
@@ -144,66 +140,6 @@ struct OnboardingView: View {
         .padding(Spacing.xl)
     }
 
-    // MARK: - Data Sources Step
-
-    private var dataSourcesStep: some View {
-        VStack(spacing: Spacing.xl) {
-            Spacer()
-
-            Image(systemName: "tray.2.fill")
-                .font(.system(size: 64))
-                .foregroundStyle(.blue)
-
-            Text("Choose Your Data Sources")
-                .font(.largeTitle.bold())
-
-            Text("Select which folders Fracta should manage")
-                .font(.title3)
-                .foregroundStyle(.secondary)
-
-            // Suggested locations
-            VStack(alignment: .leading, spacing: Spacing.md) {
-                Text("Suggested Locations")
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
-
-                DataSourceRow(
-                    icon: "doc.text.fill",
-                    title: "Documents",
-                    path: "~/Documents",
-                    isSelected: false
-                )
-
-                DataSourceRow(
-                    icon: "desktopcomputer",
-                    title: "Desktop",
-                    path: "~/Desktop",
-                    isSelected: false
-                )
-
-                DataSourceRow(
-                    icon: "folder.fill",
-                    title: "Custom Folder...",
-                    path: "Choose any folder",
-                    isSelected: false,
-                    isCustom: true
-                ) {
-                    appState.showingFolderPicker = true
-                }
-            }
-            .padding()
-            .background(.ultraThinMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-
-            Text("You can always add or remove locations later in Settings")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            Spacer()
-        }
-        .padding(Spacing.xl)
-    }
-
     // MARK: - Ready Step
 
     private var readyStep: some View {
@@ -290,6 +226,10 @@ struct OnboardingView: View {
     private func completeOnboarding() {
         appState.hasCompletedOnboarding = true
         appState.showingOnboarding = false
+
+        // Auto-open home directory for Finder-like experience
+        let homeURL = URL(fileURLWithPath: NSHomeDirectory())
+        appState.openLocation(at: homeURL)
     }
 }
 
@@ -357,47 +297,6 @@ struct PermissionRow: View {
         .padding()
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 12))
-    }
-}
-
-struct DataSourceRow: View {
-    let icon: String
-    let title: String
-    let path: String
-    var isSelected: Bool = false
-    var isCustom: Bool = false
-    var action: (() -> Void)? = nil
-
-    var body: some View {
-        Button {
-            action?()
-        } label: {
-            HStack(spacing: Spacing.md) {
-                Image(systemName: icon)
-                    .font(.title2)
-                    .foregroundStyle(Color.accentColor)
-                    .frame(width: 32)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.headline)
-                    Text(path)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                if isCustom {
-                    Image(systemName: "chevron.right")
-                        .foregroundStyle(.secondary)
-                } else {
-                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                        .foregroundStyle(isSelected ? Color.accentColor : .secondary)
-                }
-            }
-        }
-        .buttonStyle(.plain)
     }
 }
 

@@ -18,6 +18,10 @@ struct FractaApp: App {
                     OnboardingView()
                         .environmentObject(appState)
                 }
+                .task {
+                    // Auto-open home directory after view is ready
+                    appState.openHomeDirectoryIfNeeded()
+                }
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1200, height: 800)
@@ -42,6 +46,9 @@ struct FractaApp: App {
                     OnboardingView()
                         .environmentObject(appState)
                 }
+                .task {
+                    appState.openHomeDirectoryIfNeeded()
+                }
         }
         .windowStyle(.volumetric)
         #else
@@ -52,6 +59,9 @@ struct FractaApp: App {
                     OnboardingView()
                         .environmentObject(appState)
                 }
+                .task {
+                    appState.openHomeDirectoryIfNeeded()
+                }
         }
         #endif
     }
@@ -60,11 +70,26 @@ struct FractaApp: App {
 /// Global application state
 @MainActor
 class AppState: ObservableObject {
-    /// Currently selected location
-    @Published var currentLocation: LocationState?
+    // MARK: - Locations (Multiple Data Sources)
+
+    /// All managed locations
+    @Published var locations: [LocationState] = [] {
+        didSet { saveLocations() }
+    }
+
+    /// Currently active/browsing location
+    @Published var activeLocation: LocationState?
+
+    /// Quick access bookmarks
+    @Published var quickAccessItems: [QuickAccessItem] = [] {
+        didSet { saveQuickAccess() }
+    }
 
     /// Navigation path for drill-down
     @Published var navigationPath: [PathItem] = []
+
+    /// Current browsing path within active location
+    @Published var currentPath: String = ""
 
     /// Search query
     @Published var searchQuery: String = ""
@@ -77,6 +102,9 @@ class AppState: ObservableObject {
 
     /// Selected file for preview
     @Published var selectedFile: FileItem?
+
+    /// Folder page content (when folder has same-named .md file)
+    @Published var folderPageContent: DocumentContent?
 
     // MARK: - Onboarding State
 
@@ -107,23 +135,54 @@ class AppState: ObservableObject {
     /// Loading message
     @Published var loadingMessage: String = ""
 
+    // MARK: - Persistence Keys
+    private let locationsKey = "fracta.locations"
+    private let quickAccessKey = "fracta.quickAccess"
+
     init() {
+        // Load persisted data
+        loadLocations()
+        loadQuickAccess()
+
         // Show onboarding on first launch
         if !hasCompletedOnboarding {
             showingOnboarding = true
         }
     }
 
+    /// Open home directory if onboarding is complete and no location is open
+    func openHomeDirectoryIfNeeded() {
+        guard hasCompletedOnboarding else { return }
+
+        // If no locations exist, add home directory
+        if locations.isEmpty {
+            let homeURL = URL(fileURLWithPath: NSHomeDirectory())
+            addLocation(at: homeURL)
+        }
+
+        // Activate the first location if none active
+        if activeLocation == nil, let first = locations.first {
+            activateLocation(first)
+        }
+    }
+
     // MARK: - Location Operations
 
-    /// Open an existing managed location
-    func openLocation(at url: URL) {
+    /// Add a new location (data source)
+    func addLocation(at url: URL) {
+        let path = url.path
+
+        // Check for overlapping locations
+        if let overlapping = locations.first(where: { $0.overlaps(with: path) }) {
+            showError(.generic("This folder overlaps with '\(overlapping.label)'. Remove it first or choose a different folder."))
+            return
+        }
+
         isLoading = true
-        loadingMessage = "Opening location..."
+        loadingMessage = "Adding location..."
 
         Task {
             do {
-                // Get the folder name as label
                 let label = url.lastPathComponent
 
                 // Try to open existing managed location first
@@ -131,18 +190,23 @@ class AppState: ObservableObject {
                 do {
                     locationState = try FractaBridge.shared.openLocation(
                         label: label,
-                        path: url.path
+                        path: path
                     )
                 } catch BridgeError.notFound {
                     // Not managed yet, create new location
                     locationState = try FractaBridge.shared.createLocation(
                         label: label,
-                        path: url.path
+                        path: path
                     )
                 }
 
                 await MainActor.run {
-                    currentLocation = locationState
+                    // Add to locations if not already present
+                    if !locations.contains(where: { $0.rootPath == path }) {
+                        locations.append(locationState)
+                    }
+                    // Activate the new location
+                    activateLocation(locationState)
                     isLoading = false
                     loadingMessage = ""
                 }
@@ -156,14 +220,158 @@ class AppState: ObservableObject {
         }
     }
 
-    /// Close current location
-    func closeLocation() {
-        if let location = currentLocation {
-            FractaBridge.shared.closeLocation(path: location.rootPath)
+    /// Activate a location for browsing
+    func activateLocation(_ location: LocationState) {
+        // Ensure the location is opened in the Rust backend
+        Task {
+            do {
+                // Try to open in FractaBridge (may already be open, that's OK)
+                _ = try FractaBridge.shared.openLocation(
+                    label: location.label,
+                    path: location.rootPath
+                )
+            } catch BridgeError.notFound {
+                // Not managed yet, create it
+                do {
+                    _ = try FractaBridge.shared.createLocation(
+                        label: location.label,
+                        path: location.rootPath
+                    )
+                } catch {
+                    await MainActor.run {
+                        showError(.locationOpenFailed(error.localizedDescription))
+                    }
+                    return
+                }
+            } catch {
+                await MainActor.run {
+                    showError(.locationOpenFailed(error.localizedDescription))
+                }
+                return
+            }
+
+            await MainActor.run {
+                activeLocation = location
+                currentPath = location.rootPath
+                selectedFile = nil
+                folderPageContent = nil
+                navigationPath = []
+                // Load folder page for root if exists
+                loadFolderPage(for: location.rootPath)
+            }
         }
-        currentLocation = nil
+    }
+
+    /// Remove a location from managed locations
+    func removeLocation(_ location: LocationState) {
+        FractaBridge.shared.closeLocation(path: location.rootPath)
+        locations.removeAll { $0.id == location.id }
+
+        if activeLocation?.id == location.id {
+            activeLocation = locations.first
+            if let active = activeLocation {
+                currentPath = active.rootPath
+            }
+        }
         selectedFile = nil
-        navigationPath = []
+        folderPageContent = nil
+    }
+
+    // MARK: - Quick Access
+
+    /// Add a quick access bookmark
+    func addQuickAccess(path: String, label: String, icon: String = "folder.fill") {
+        let item = QuickAccessItem(label: label, path: path, icon: icon)
+        if !quickAccessItems.contains(where: { $0.path == path }) {
+            quickAccessItems.append(item)
+        }
+    }
+
+    /// Remove a quick access bookmark
+    func removeQuickAccess(_ item: QuickAccessItem) {
+        quickAccessItems.removeAll { $0.id == item.id }
+    }
+
+    // MARK: - Navigation
+
+    /// Navigate to a path within the active location
+    func navigateTo(path: String) {
+        currentPath = path
+        selectedFile = nil
+        loadFolderPage(for: path)
+    }
+
+    /// Load folder page if exists (same-named .md file)
+    private func loadFolderPage(for folderPath: String) {
+        // Check for folder page: /path/to/Folder → /path/to/Folder.md
+        let mdPath = folderPath + ".md"
+
+        Task {
+            do {
+                if FileManager.default.fileExists(atPath: mdPath) {
+                    let doc = try FractaBridge.shared.readDocumentAtPath(mdPath)
+                    await MainActor.run {
+                        folderPageContent = doc
+                    }
+                } else {
+                    await MainActor.run {
+                        folderPageContent = nil
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    folderPageContent = nil
+                }
+            }
+        }
+    }
+
+    // MARK: - Persistence
+
+    private func saveLocations() {
+        if let data = try? JSONEncoder().encode(locations) {
+            UserDefaults.standard.set(data, forKey: locationsKey)
+        }
+    }
+
+    private func loadLocations() {
+        if let data = UserDefaults.standard.data(forKey: locationsKey),
+           let saved = try? JSONDecoder().decode([LocationState].self, from: data) {
+            locations = saved
+        }
+    }
+
+    private func saveQuickAccess() {
+        if let data = try? JSONEncoder().encode(quickAccessItems) {
+            UserDefaults.standard.set(data, forKey: quickAccessKey)
+        }
+    }
+
+    private func loadQuickAccess() {
+        if let data = UserDefaults.standard.data(forKey: quickAccessKey),
+           let saved = try? JSONDecoder().decode([QuickAccessItem].self, from: data) {
+            quickAccessItems = saved
+        }
+    }
+
+    // MARK: - Legacy Compatibility
+
+    /// For backward compatibility with views using currentLocation
+    var currentLocation: LocationState? {
+        get { activeLocation }
+        set { activeLocation = newValue }
+    }
+
+    /// Legacy: open location (now adds to locations list)
+    func openLocation(at url: URL) {
+        addLocation(at: url)
+    }
+
+    /// Legacy: close current location
+    func closeLocation() {
+        if let location = activeLocation {
+            removeLocation(location)
+        }
     }
 
     // MARK: - Error Handling

@@ -64,7 +64,11 @@ struct DocumentPreviewView: View {
                 }
             }
         }
-        .task {
+        .task(id: file.id) {
+            // Reset state and load new document when file changes
+            document = nil
+            errorMessage = nil
+            isLoading = true
             await loadDocument()
         }
     }
@@ -134,15 +138,33 @@ struct DocumentPreviewView: View {
 
     private func contentSection(_ doc: DocumentContent) -> some View {
         VStack(alignment: .leading, spacing: Spacing.md) {
-            Text("Content")
-                .font(.glassHeadline)
-                .foregroundStyle(.secondary)
+            HStack {
+                Text("Content")
+                    .font(.glassHeadline)
+                    .foregroundStyle(.secondary)
 
-            Text(doc.plainText)
-                .font(.glassBody)
-                .lineSpacing(6)
-                .textSelection(.enabled)
-                .glassCard(cornerRadius: 12, padding: Spacing.lg)
+                Spacer()
+
+                Text("\(doc.fullCharacterCount.formatted()) bytes")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+
+            // Use native text view for efficient rendering of any size
+            NativeTextView(doc.plainText)
+                .frame(minHeight: 200, maxHeight: 600)
+                .glassCard(cornerRadius: 12, padding: Spacing.sm)
+
+            if doc.isTruncated {
+                HStack {
+                    Image(systemName: "info.circle")
+                        .foregroundStyle(.secondary)
+                    Text("Large file - showing preview. Open in editor for full content.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.top, Spacing.sm)
+            }
         }
     }
 
@@ -196,28 +218,117 @@ struct DocumentPreviewView: View {
             return
         }
 
-        guard let location = appState.currentLocation else {
-            errorMessage = "No location open"
+        // Read and parse on background thread
+        let result = await Task.detached(priority: .userInitiated) { [path = file.path] in
+            do {
+                // Read file
+                let content = try String(contentsOfFile: path, encoding: .utf8)
+
+                // Fast parse - only frontmatter + first heading
+                let parsed = Self.parseFast(content)
+                return Result<DocumentContent, Error>.success(parsed)
+            } catch {
+                return Result<DocumentContent, Error>.failure(error)
+            }
+        }.value
+
+        await MainActor.run {
+            switch result {
+            case .success(let doc):
+                document = doc
+            case .failure(let error):
+                errorMessage = error.localizedDescription
+            }
             isLoading = false
-            return
+        }
+    }
+
+    /// Ultra-fast Markdown parsing - only extract metadata, don't process full content
+    private nonisolated static func parseFast(_ content: String) -> DocumentContent {
+        var title: String? = nil
+        var tags: [String] = []
+        var area: String? = nil
+        var hasFrontMatter = false
+        var contentStartIndex = content.startIndex
+
+        // Only check first 2KB for frontmatter (frontmatter is always at the start)
+        let headerLimit = min(2048, content.count)
+        let headerRange = content.startIndex..<content.index(content.startIndex, offsetBy: headerLimit)
+        let header = String(content[headerRange])
+
+        // Check for YAML frontmatter
+        if header.hasPrefix("---\n") || header.hasPrefix("---\r\n") {
+            // Find closing ---
+            if let endRange = header.range(of: "\n---\n") ?? header.range(of: "\r\n---\r\n") {
+                hasFrontMatter = true
+                let frontMatter = String(header[header.index(header.startIndex, offsetBy: 4)..<endRange.lowerBound])
+
+                // Parse frontmatter line by line
+                for line in frontMatter.split(separator: "\n", omittingEmptySubsequences: false) {
+                    let trimmed = line.trimmingCharacters(in: .whitespaces)
+                    if trimmed.hasPrefix("title:") {
+                        title = String(trimmed.dropFirst(6)).trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+                    } else if trimmed.hasPrefix("area:") {
+                        area = String(trimmed.dropFirst(5)).trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+                    } else if trimmed.hasPrefix("tags:") {
+                        let tagsPart = String(trimmed.dropFirst(5)).trimmingCharacters(in: .whitespaces)
+                        if tagsPart.hasPrefix("[") && tagsPart.hasSuffix("]") {
+                            let inner = tagsPart.dropFirst().dropLast()
+                            tags = inner.split(separator: ",").map {
+                                String($0).trimmingCharacters(in: .whitespaces).trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+                            }
+                        }
+                    }
+                }
+
+                // Find content start after frontmatter
+                if let fullEndRange = content.range(of: "\n---\n") ?? content.range(of: "\r\n---\r\n") {
+                    contentStartIndex = fullEndRange.upperBound
+                }
+            }
         }
 
-        do {
-            let content = try FractaBridge.shared.readFile(
-                locationPath: location.rootPath,
-                filePath: file.path
-            )
-            let doc = FractaBridge.shared.parseDocument(markdown: content)
-            await MainActor.run {
-                document = doc
-                isLoading = false
-            }
-        } catch {
-            await MainActor.run {
-                errorMessage = error.localizedDescription
-                isLoading = false
+        // Extract title from first heading if not in frontmatter (only check first 1KB of content)
+        if title == nil {
+            let contentStart = String(content[contentStartIndex...].prefix(1024))
+            for line in contentStart.split(separator: "\n", omittingEmptySubsequences: false) {
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                if trimmed.hasPrefix("# ") {
+                    title = String(trimmed.dropFirst(2))
+                    break
+                }
+                // Stop if we hit a non-empty, non-heading line
+                if !trimmed.isEmpty && !trimmed.hasPrefix("#") {
+                    break
+                }
             }
         }
+
+        // Get content after frontmatter
+        let contentSubstring = content[contentStartIndex...]
+
+        // Calculate full size using utf8 count (O(1) for substring, faster than .count)
+        let fullSize = contentSubstring.utf8.count
+
+        // Only store preview (first 8000 chars) to avoid slow SwiftUI rendering
+        let previewLimit = 8000
+        let preview: String
+        if fullSize > previewLimit {
+            // Take prefix efficiently
+            preview = String(contentSubstring.prefix(previewLimit))
+        } else {
+            preview = String(contentSubstring)
+        }
+
+        return DocumentContent(
+            title: title,
+            plainText: preview,
+            fullCharacterCount: fullSize,
+            hasFrontMatter: hasFrontMatter,
+            tags: tags,
+            area: area,
+            blockCount: 0
+        )
     }
 }
 
