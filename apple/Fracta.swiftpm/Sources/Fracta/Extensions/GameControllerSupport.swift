@@ -33,8 +33,10 @@ class GameControllerManager: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            if let controller = notification.object as? GCController {
-                self?.controllerConnected(controller)
+            guard let self = self,
+                  let controller = notification.object as? GCController else { return }
+            Task { @MainActor in
+                self.controllerConnected(controller)
             }
         }
 
@@ -43,7 +45,10 @@ class GameControllerManager: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.controllerDisconnected()
+            guard let self = self else { return }
+            Task { @MainActor in
+                self.controllerDisconnected()
+            }
         }
 
         observers = [connectObserver, disconnectObserver]
