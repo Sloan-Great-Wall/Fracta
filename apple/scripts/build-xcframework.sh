@@ -12,6 +12,17 @@
 
 set -e
 
+# Load Rust environment (cargo may not be in PATH when run from Xcode/Finder)
+if [ -f "$HOME/.cargo/env" ]; then
+    source "$HOME/.cargo/env"
+fi
+
+# Verify cargo is available
+if ! command -v cargo &> /dev/null; then
+    echo "Error: cargo not found. Please install Rust: https://rustup.rs"
+    exit 1
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 APPLE_DIR="$PROJECT_ROOT/apple"
