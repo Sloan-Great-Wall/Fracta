@@ -1,5 +1,5 @@
 import SwiftUI
-import GameController
+@preconcurrency import GameController
 
 // MARK: - Game Controller Support
 //
@@ -11,101 +11,43 @@ import GameController
 // - Shoulder buttons: Switch tabs/sections
 
 /// Game controller manager for the app
+/// Uses @Observable for simpler state management with Swift 6 concurrency
+@Observable
 @MainActor
-class GameControllerManager: ObservableObject {
-    @Published var isControllerConnected = false
-    @Published var currentController: GCController?
-
-    private var observers: [NSObjectProtocol] = []
+final class GameControllerManager {
+    var isControllerConnected = false
+    var controllerName: String?
 
     init() {
-        setupNotifications()
-        checkForConnectedControllers()
-    }
+        // Check for already connected controllers
+        updateControllerStatus()
 
-    deinit {
-        observers.forEach { NotificationCenter.default.removeObserver($0) }
-    }
-
-    private func setupNotifications() {
-        let connectObserver = NotificationCenter.default.addObserver(
-            forName: .GCControllerDidConnect,
-            object: nil,
-            queue: .main
-        ) { [weak self] notification in
-            guard let self = self,
-                  let controller = notification.object as? GCController else { return }
-            Task { @MainActor in
-                self.controllerConnected(controller)
+        // Set up notifications using modern async approach
+        Task {
+            for await notification in NotificationCenter.default.notifications(named: .GCControllerDidConnect) {
+                await MainActor.run {
+                    self.updateControllerStatus()
+                    if let controller = notification.object as? GCController {
+                        self.controllerName = controller.vendorName
+                    }
+                }
             }
         }
 
-        let disconnectObserver = NotificationCenter.default.addObserver(
-            forName: .GCControllerDidDisconnect,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            guard let self = self else { return }
-            Task { @MainActor in
-                self.controllerDisconnected()
+        Task {
+            for await _ in NotificationCenter.default.notifications(named: .GCControllerDidDisconnect) {
+                await MainActor.run {
+                    self.updateControllerStatus()
+                }
             }
         }
-
-        observers = [connectObserver, disconnectObserver]
     }
 
-    private func checkForConnectedControllers() {
-        if let controller = GCController.controllers().first {
-            controllerConnected(controller)
-        }
+    private func updateControllerStatus() {
+        let controllers = GCController.controllers()
+        isControllerConnected = !controllers.isEmpty
+        controllerName = controllers.first?.vendorName
     }
-
-    private func controllerConnected(_ controller: GCController) {
-        currentController = controller
-        isControllerConnected = true
-        configureController(controller)
-    }
-
-    private func controllerDisconnected() {
-        currentController = nil
-        isControllerConnected = GCController.controllers().first != nil
-    }
-
-    private func configureController(_ controller: GCController) {
-        // Enable micro gamepad for Siri Remote
-        controller.microGamepad?.reportsAbsoluteDpadValues = true
-
-        // Configure extended gamepad (standard controllers)
-        if let gamepad = controller.extendedGamepad {
-            configureExtendedGamepad(gamepad)
-        }
-    }
-
-    private func configureExtendedGamepad(_ gamepad: GCExtendedGamepad) {
-        // D-pad navigation is handled by SwiftUI's focus system
-        // But we can add haptic feedback on iOS
-
-        #if os(iOS)
-        gamepad.buttonA.pressedChangedHandler = { [weak self] _, _, pressed in
-            if pressed {
-                self?.provideHapticFeedback(.selection)
-            }
-        }
-
-        gamepad.buttonB.pressedChangedHandler = { [weak self] _, _, pressed in
-            if pressed {
-                self?.provideHapticFeedback(.light)
-            }
-        }
-        #endif
-    }
-
-    #if os(iOS)
-    private func provideHapticFeedback(_ style: UIImpactFeedbackGenerator.FeedbackStyle) {
-        let generator = UIImpactFeedbackGenerator(style: style)
-        generator.impactOccurred()
-    }
-    #endif
 }
 
 // MARK: - Focus Navigation Helpers
@@ -166,7 +108,7 @@ extension View {
 
 /// Shows controller connection status
 struct ControllerStatusView: View {
-    @ObservedObject var controllerManager: GameControllerManager
+    var controllerManager: GameControllerManager
 
     var body: some View {
         HStack(spacing: 8) {
@@ -174,7 +116,7 @@ struct ControllerStatusView: View {
                 .foregroundStyle(controllerManager.isControllerConnected ? .green : .secondary)
 
             if controllerManager.isControllerConnected {
-                Text("Controller Connected")
+                Text(controllerManager.controllerName ?? "Controller Connected")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -185,9 +127,3 @@ struct ControllerStatusView: View {
         .clipShape(Capsule())
     }
 }
-
-// MARK: - UIKit Bridge for Haptics
-
-#if os(iOS)
-import UIKit
-#endif
