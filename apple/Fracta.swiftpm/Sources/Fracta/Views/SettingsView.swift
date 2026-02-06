@@ -135,9 +135,12 @@ struct AboutView: View {
             Text("Fracta")
                 .font(.largeTitle.bold())
 
-            Text("Local-first Life Operating System")
-                .font(.title3)
-                .foregroundStyle(.secondary)
+            // Keywords
+            HStack(spacing: Spacing.sm) {
+                KeywordBadge(text: "Local-first", color: .blue)
+                KeywordBadge(text: "Private", color: .green)
+                KeywordBadge(text: "Open", color: .purple)
+            }
 
             Text("Version 0.1.0")
                 .font(.caption)
@@ -182,6 +185,8 @@ struct TechBadge: View {
             .clipShape(Capsule())
     }
 }
+
+// KeywordBadge is defined in OnboardingView.swift
 
 // MARK: - Preview
 

@@ -76,9 +76,12 @@ struct OnboardingView: View {
             Text("Welcome to Fracta")
                 .font(.largeTitle.bold())
 
-            Text("Your local-first life operating system")
-                .font(.title3)
-                .foregroundStyle(.secondary)
+            // Keywords
+            HStack(spacing: Spacing.sm) {
+                KeywordBadge(text: "Local-first", color: .blue)
+                KeywordBadge(text: "Private", color: .green)
+                KeywordBadge(text: "Open", color: .purple)
+            }
 
             VStack(alignment: .leading, spacing: Spacing.md) {
                 FeatureRow(icon: "folder.fill", title: "Organize", description: "Browse and manage your files with smart indexing")
@@ -414,6 +417,21 @@ struct TipRow: View {
 
             Spacer()
         }
+    }
+}
+
+struct KeywordBadge: View {
+    let text: String
+    let color: Color
+
+    var body: some View {
+        Text(text)
+            .font(.subheadline.weight(.medium))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(color.opacity(0.15))
+            .foregroundStyle(color)
+            .clipShape(Capsule())
     }
 }
 
