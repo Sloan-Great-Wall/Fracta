@@ -305,14 +305,25 @@ impl Location {
             }
         }
 
-        let read_dir = std::fs::read_dir(dir).map_err(|e| match e.kind() {
-            std::io::ErrorKind::NotFound => VfsError::NotFound(dir.to_path_buf()),
-            std::io::ErrorKind::PermissionDenied => VfsError::PermissionDenied(dir.to_path_buf()),
-            _ => VfsError::Io { source: e },
-        })?;
+        // Gracefully handle permission denied - skip inaccessible directories
+        let read_dir = match std::fs::read_dir(dir) {
+            Ok(rd) => rd,
+            Err(e) => match e.kind() {
+                std::io::ErrorKind::PermissionDenied => {
+                    // Skip directories we can't access (e.g., ~/Library/Application Support/MobileSync)
+                    return Ok(());
+                }
+                std::io::ErrorKind::NotFound => return Err(VfsError::NotFound(dir.to_path_buf())),
+                _ => return Err(VfsError::Io { source: e }),
+            },
+        };
 
         for dir_entry in read_dir {
-            let dir_entry = dir_entry?;
+            // Skip entries we can't read
+            let dir_entry = match dir_entry {
+                Ok(de) => de,
+                Err(_) => continue,
+            };
             let path = dir_entry.path();
             let name = dir_entry.file_name().to_string_lossy().into_owned();
 
@@ -321,7 +332,13 @@ impl Location {
                 continue;
             }
 
-            let entry = self.build_entry(&path, &dir_entry.metadata()?);
+            // Skip entries where we can't get metadata
+            let metadata = match dir_entry.metadata() {
+                Ok(m) => m,
+                Err(_) => continue,
+            };
+
+            let entry = self.build_entry(&path, &metadata);
 
             // Skip ignored entries unless explicitly requested
             if entry.scope == Scope::Ignored && !options.include_ignored {
@@ -332,7 +349,8 @@ impl Location {
             results.push(entry);
 
             if should_recurse {
-                self.walk_recursive(&path, options, depth + 1, results)?;
+                // Continue walking even if a subdirectory fails
+                let _ = self.walk_recursive(&path, options, depth + 1, results);
             }
         }
 

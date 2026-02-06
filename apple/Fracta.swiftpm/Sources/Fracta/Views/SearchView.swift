@@ -7,6 +7,7 @@ struct SearchView: View {
     @State private var isSearching = false
     @State private var focusedIndex: Int = 0
     @FocusState private var isResultsFocused: Bool
+    @FocusState private var isSearchFieldFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -28,6 +29,12 @@ struct SearchView: View {
             }
         }
         .background(.ultraThinMaterial)
+        .onAppear {
+            // Auto-focus search field when view appears
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                isSearchFieldFocused = true
+            }
+        }
         .onChange(of: appState.searchQuery) { _, newValue in
             performSearch(query: newValue)
         }
@@ -36,33 +43,53 @@ struct SearchView: View {
     // MARK: - Sections
 
     private var searchHeader: some View {
-        HStack(spacing: Spacing.md) {
-            Image(systemName: "magnifyingglass")
-                .font(.title2)
-                .foregroundStyle(.secondary)
+        VStack(spacing: Spacing.md) {
+            // Search input field
+            HStack(spacing: Spacing.md) {
+                Image(systemName: "magnifyingglass")
+                    .font(.title2)
+                    .foregroundStyle(.secondary)
 
-            VStack(alignment: .leading, spacing: Spacing.xs) {
-                Text("Search")
-                    .font(.glassHeadline)
+                TextField("Search files...", text: $appState.searchQuery)
+                    .textFieldStyle(.plain)
+                    .font(.title3)
+                    .focused($isSearchFieldFocused)
+                    .onSubmit {
+                        // Search is triggered by onChange, but this handles Enter key
+                    }
 
-                if !results.isEmpty {
-                    Text("\(results.count) results for \"\(appState.searchQuery)\"")
-                        .font(.glassCaption)
-                        .foregroundStyle(.secondary)
+                if !appState.searchQuery.isEmpty {
+                    Button {
+                        appState.searchQuery = ""
+                        results = []
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
                 }
-            }
 
-            Spacer()
-
-            if !appState.searchQuery.isEmpty {
                 Button {
-                    appState.searchQuery = ""
-                    results = []
+                    appState.isSearching = false
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
+                    Text("Cancel")
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
+                .keyboardShortcut(.escape, modifiers: [])
+            }
+            .padding()
+            .background(Color.primary.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+
+            // Results count
+            if !results.isEmpty {
+                HStack {
+                    Text("\(results.count) results")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
             }
         }
         .padding()

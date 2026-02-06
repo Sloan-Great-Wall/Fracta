@@ -32,6 +32,21 @@ struct ContentView: View {
             if appState.isLoading {
                 LoadingOverlay(message: appState.loadingMessage)
             }
+
+            // Search overlay
+            if appState.isSearching {
+                Color.black.opacity(0.3)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        appState.isSearching = false
+                    }
+
+                SearchView()
+                    .environmentObject(appState)
+                    .frame(width: 500, height: 500)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .shadow(radius: 20)
+            }
         }
         #if os(macOS)
         .frame(minWidth: 800, minHeight: 500)
@@ -341,11 +356,6 @@ struct BrowserView: View {
                 }
             }
         }
-        .searchable(
-            text: $appState.searchQuery,
-            isPresented: $appState.isSearching,
-            prompt: "Search files..."
-        )
         .onAppear { loadFiles() }
         .onChange(of: appState.activeLocation?.rootPath) { _, _ in loadFiles() }
         .onChange(of: appState.currentPath) { _, _ in loadFiles() }

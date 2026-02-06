@@ -32,12 +32,22 @@ struct DataSourcesView: View {
             Divider()
 
             // Location list
-            if let location = appState.currentLocation {
-                ManagedLocationCard(location: location) {
-                    appState.closeLocation()
-                }
-            } else {
+            if appState.locations.isEmpty {
                 emptyState
+            } else {
+                ScrollView {
+                    VStack(spacing: Spacing.md) {
+                        ForEach(appState.locations) { location in
+                            ManagedLocationCard(
+                                location: location,
+                                isActive: appState.activeLocation?.id == location.id,
+                                onRemove: {
+                                    appState.removeLocation(location)
+                                }
+                            )
+                        }
+                    }
+                }
             }
 
             Spacer()
@@ -113,11 +123,14 @@ struct DataSourcesView: View {
 /// Card showing a managed location with status and controls
 struct ManagedLocationCard: View {
     let location: LocationState
+    var isActive: Bool = false
     let onRemove: () -> Void
 
     @State private var isHovering = false
     @State private var fileCount: UInt32 = 0
     @State private var indexedCount: UInt32 = 0
+    @State private var isIndexing = false
+    @State private var indexError: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.md) {
@@ -125,11 +138,23 @@ struct ManagedLocationCard: View {
             HStack {
                 Image(systemName: "folder.fill")
                     .font(.title)
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(isActive ? Color.accentColor : .secondary)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(location.label)
-                        .font(.headline)
+                    HStack {
+                        Text(location.label)
+                            .font(.headline)
+
+                        if isActive {
+                            Text("Active")
+                                .font(.caption2)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.accentColor)
+                                .foregroundStyle(.white)
+                                .clipShape(Capsule())
+                        }
+                    }
 
                     Text(location.rootPath)
                         .font(.caption)
@@ -162,7 +187,13 @@ struct ManagedLocationCard: View {
             HStack(spacing: Spacing.xl) {
                 StatItem(icon: "doc.fill", label: "Files", value: "\(fileCount)")
                 StatItem(icon: "text.magnifyingglass", label: "Indexed", value: "\(indexedCount)")
-                StatItem(icon: "clock.fill", label: "Last Scan", value: "Just now")
+            }
+
+            // Index error message
+            if let error = indexError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
             }
 
             Divider()
@@ -172,9 +203,17 @@ struct ManagedLocationCard: View {
                 Button {
                     rebuildIndex()
                 } label: {
-                    Label("Rebuild Index", systemImage: "arrow.clockwise")
+                    if isIndexing {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                            .frame(width: 16, height: 16)
+                        Text("Indexing...")
+                    } else {
+                        Label("Build Index", systemImage: "magnifyingglass")
+                    }
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.borderedProminent)
+                .disabled(isIndexing)
 
                 Button {
                     revealInFinder()
@@ -199,7 +238,7 @@ struct ManagedLocationCard: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                .stroke(isActive ? Color.accentColor : Color.secondary.opacity(0.2), lineWidth: isActive ? 2 : 1)
         )
         .onHover { hovering in
             isHovering = hovering
@@ -213,21 +252,34 @@ struct ManagedLocationCard: View {
         Task {
             do {
                 fileCount = try FractaBridge.shared.indexFileCount(locationPath: location.rootPath)
-                // indexedCount would come from a separate FFI call
             } catch {
-                // Ignore errors for stats
+                // Ignore errors for stats - index might not exist yet
+                fileCount = 0
             }
         }
     }
 
     private func rebuildIndex() {
+        isIndexing = true
+        indexError = nil
+
         Task {
             do {
-                let stats = try FractaBridge.shared.buildFullIndex(locationPath: location.rootPath)
-                fileCount = stats.filesScanned
-                indexedCount = stats.markdownIndexed
+                // Use the async background method to avoid freezing UI
+                let stats = try await FractaBridge.buildFullIndexAsync(
+                    label: location.label,
+                    locationPath: location.rootPath
+                )
+                await MainActor.run {
+                    fileCount = stats.filesScanned
+                    indexedCount = stats.markdownIndexed
+                    isIndexing = false
+                }
             } catch {
-                // Handle error
+                await MainActor.run {
+                    indexError = error.localizedDescription
+                    isIndexing = false
+                }
             }
         }
     }

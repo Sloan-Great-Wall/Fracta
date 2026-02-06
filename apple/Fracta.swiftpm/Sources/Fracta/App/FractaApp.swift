@@ -259,6 +259,8 @@ class AppState: ObservableObject {
                 // Load folder page for root if exists
                 loadFolderPage(for: location.rootPath)
             }
+            // Note: Index building is done manually via Settings > Data Sources > Rebuild Index
+            // Auto-indexing disabled because FractaBridge runs on MainActor
         }
     }
 

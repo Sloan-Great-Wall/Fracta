@@ -257,7 +257,7 @@ class FractaBridge: ObservableObject {
         }
     }
 
-    /// Build full index
+    /// Build full index (runs on main thread - prefer buildFullIndexAsync for background)
     func buildFullIndex(locationPath: String) throws -> (filesScanned: UInt32, markdownIndexed: UInt32) {
         guard let location = locations[locationPath] else {
             throw BridgeError.notFound("Location not open: \(locationPath)")
@@ -271,6 +271,23 @@ class FractaBridge: ObservableObject {
         } catch let error as FfiError {
             throw BridgeError.from(error)
         }
+    }
+
+    /// Build full index asynchronously in background (non-blocking)
+    /// This creates fresh FFI objects on a background thread to avoid blocking the main thread.
+    static func buildFullIndexAsync(
+        label: String,
+        locationPath: String
+    ) async throws -> (filesScanned: UInt32, markdownIndexed: UInt32) {
+        // Run the heavy work on a background thread
+        return try await Task.detached(priority: .userInitiated) {
+            // Create fresh FFI objects for this background operation
+            // This avoids any @MainActor isolation issues
+            let location = try FfiLocation.open(label: label, root: locationPath)
+            let index = try FfiIndex.open(location: location)
+            let stats = try index.buildFull(location: location)
+            return (stats.filesScanned, stats.markdownIndexed)
+        }.value
     }
 
     /// Update index incrementally
