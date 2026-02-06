@@ -419,42 +419,6 @@ struct EmptyDetailView: View {
     }
 }
 
-/// Settings view (macOS)
-struct SettingsView: View {
-    var body: some View {
-        TabView {
-            GeneralSettingsView()
-                .tabItem {
-                    Label("General", systemImage: "gear")
-                }
-
-            AppearanceSettingsView()
-                .tabItem {
-                    Label("Appearance", systemImage: "paintbrush")
-                }
-        }
-        .frame(width: 500, height: 300)
-    }
-}
-
-struct GeneralSettingsView: View {
-    var body: some View {
-        Form {
-            Text("General settings coming soon...")
-        }
-        .padding()
-    }
-}
-
-struct AppearanceSettingsView: View {
-    var body: some View {
-        Form {
-            Text("Appearance settings coming soon...")
-        }
-        .padding()
-    }
-}
-
 // MARK: - Array Extension
 
 extension Array {

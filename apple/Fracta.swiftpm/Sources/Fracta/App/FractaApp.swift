@@ -14,6 +14,10 @@ struct FractaApp: App {
             ContentView()
                 .environmentObject(appState)
                 .frame(minWidth: 800, minHeight: 600)
+                .sheet(isPresented: $appState.showingOnboarding) {
+                    OnboardingView()
+                        .environmentObject(appState)
+                }
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1200, height: 800)
@@ -34,12 +38,20 @@ struct FractaApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(appState)
+                .sheet(isPresented: $appState.showingOnboarding) {
+                    OnboardingView()
+                        .environmentObject(appState)
+                }
         }
         .windowStyle(.volumetric)
         #else
         WindowGroup {
             ContentView()
                 .environmentObject(appState)
+                .sheet(isPresented: $appState.showingOnboarding) {
+                    OnboardingView()
+                        .environmentObject(appState)
+                }
         }
         #endif
     }
@@ -66,6 +78,14 @@ class AppState: ObservableObject {
     /// Selected file for preview
     @Published var selectedFile: FileItem?
 
+    // MARK: - Onboarding State
+
+    /// Has user completed onboarding
+    @AppStorage("hasCompletedOnboarding") var hasCompletedOnboarding: Bool = false
+
+    /// Show onboarding view
+    @Published var showingOnboarding: Bool = false
+
     // MARK: - Folder Picker State
 
     /// Show folder picker
@@ -88,7 +108,10 @@ class AppState: ObservableObject {
     @Published var loadingMessage: String = ""
 
     init() {
-        // Location will be set when user opens one
+        // Show onboarding on first launch
+        if !hasCompletedOnboarding {
+            showingOnboarding = true
+        }
     }
 
     // MARK: - Location Operations
