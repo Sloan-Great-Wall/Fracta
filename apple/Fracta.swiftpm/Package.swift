@@ -12,10 +12,10 @@ let package = Package(
         .executable(name: "Fracta", targets: ["Fracta"])
     ],
     targets: [
-        // Binary target for the Rust FFI library
+        // Binary target for the Rust FFI library (inside the package)
         .binaryTarget(
             name: "FractaFFI",
-            path: "../Frameworks/FractaFFI.xcframework"
+            path: "Frameworks/FractaFFI.xcframework"
         ),
         // C headers for FFI (module map for Clang importer)
         .target(

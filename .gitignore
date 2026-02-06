@@ -38,6 +38,7 @@ apple/Fracta/build/
 
 # Built frameworks (regenerate with build script)
 apple/Frameworks/
+apple/Fracta.swiftpm/Frameworks/
 
 # IDE
 .idea/
