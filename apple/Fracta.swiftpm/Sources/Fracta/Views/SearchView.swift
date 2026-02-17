@@ -235,17 +235,28 @@ struct SearchView: View {
     }
 
     private func selectResult(_ hit: SearchHit) {
-        // Convert hit to FileItem and select
+        guard let location = appState.activeLocation else { return }
+
+        // Build absolute path from location root + relative hit path
+        let rootPath = location.rootPath.hasSuffix("/") ? location.rootPath : location.rootPath + "/"
+        let absolutePath = rootPath + hit.path
+
+        // Navigate browser to the parent directory so the file appears in context
+        let parentPath = (absolutePath as NSString).deletingLastPathComponent
+        appState.navigateTo(path: parentPath)
+
+        // Convert hit to FileItem with absolute path and select
+        let fileName = hit.path.components(separatedBy: "/").last ?? hit.path
         let file = FileItem(
-            id: hit.path,
-            path: hit.path,
-            name: hit.path.components(separatedBy: "/").last ?? hit.path,
+            id: absolutePath,
+            path: absolutePath,
+            name: fileName,
             kind: .file,
             size: 0,
             modified: nil,
             created: nil,
             scope: .managed,
-            fileExtension: "md"
+            fileExtension: (fileName as NSString).pathExtension
         )
         appState.selectedFile = file
         appState.isSearching = false

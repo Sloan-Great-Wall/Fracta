@@ -13,54 +13,59 @@ struct DocumentPreviewView: View {
     @State private var isLoading = true
     @State private var errorMessage: String?
 
+    // Edit mode state
+    @State private var isEditing = false
+    @State private var editContent = ""
+    @State private var hasUnsavedChanges = false
+    @State private var isSaving = false
+    @State private var isLoadingFullContent = false
+    @State private var showDiscardAlert = false
+
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Spacing.lg) {
-                // Header
-                headerSection
-
-                Divider()
-                    .background(.white.opacity(0.1))
-
-                // Content
-                if let doc = document {
-                    contentSection(doc)
-                } else if isLoading {
-                    loadingSection
-                } else if let error = errorMessage {
-                    errorSection(error)
-                } else {
-                    emptySection
+        Group {
+            if isEditing {
+                // Edit mode: full-screen editable text view
+                NativeTextView(editContent, isEditable: true) { newText in
+                    editContent = newText
+                    hasUnsavedChanges = true
                 }
+                .background(.ultraThinMaterial)
+            } else {
+                // Preview mode: scrollable document preview
+                ScrollView {
+                    VStack(alignment: .leading, spacing: Spacing.lg) {
+                        // Header
+                        headerSection
+
+                        Divider()
+                            .background(.white.opacity(0.1))
+
+                        // Content
+                        if let doc = document {
+                            contentSection(doc)
+                        } else if isLoading {
+                            loadingSection
+                        } else if let error = errorMessage {
+                            errorSection(error)
+                        } else {
+                            emptySection
+                        }
+                    }
+                    .padding(Spacing.xl)
+                }
+                .background(.ultraThinMaterial)
             }
-            .padding(Spacing.xl)
         }
-        .background(.ultraThinMaterial)
-        .navigationTitle(file.name)
+        .navigationTitle(isEditing ? "Editing \(file.name)" : file.name)
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
         .toolbar {
             ToolbarItemGroup {
-                Button {
-                    // TODO: Edit action
-                } label: {
-                    Image(systemName: "pencil")
-                }
-
-                Button {
-                    // TODO: Share action
-                } label: {
-                    Image(systemName: "square.and.arrow.up")
-                }
-
-                Menu {
-                    Button("Copy Path") { }
-                    Button("Reveal in Finder") { }
-                    Divider()
-                    Button("Delete", role: .destructive) { }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
+                if isEditing {
+                    editToolbar
+                } else {
+                    previewToolbar
                 }
             }
         }
@@ -69,7 +74,68 @@ struct DocumentPreviewView: View {
             document = nil
             errorMessage = nil
             isLoading = true
+            isEditing = false
+            hasUnsavedChanges = false
+            editContent = ""
             await loadDocument()
+        }
+        .alert("Unsaved Changes", isPresented: $showDiscardAlert) {
+            Button("Discard", role: .destructive) {
+                discardChanges()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("You have unsaved changes. Do you want to discard them?")
+        }
+    }
+
+    // MARK: - Toolbars
+
+    @ViewBuilder
+    private var previewToolbar: some View {
+        if file.isMarkdown {
+            Button {
+                enterEditMode()
+            } label: {
+                Image(systemName: "pencil")
+            }
+        }
+
+        Button {
+            // TODO: Share action
+        } label: {
+            Image(systemName: "square.and.arrow.up")
+        }
+
+        Menu {
+            Button("Copy Path") { }
+            Button("Reveal in Finder") { }
+            Divider()
+            Button("Delete", role: .destructive) { }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+        }
+    }
+
+    @ViewBuilder
+    private var editToolbar: some View {
+        if isSaving {
+            ProgressView()
+                .controlSize(.small)
+        }
+
+        Button {
+            saveDocument()
+        } label: {
+            Image(systemName: "square.and.arrow.down")
+        }
+        .disabled(!hasUnsavedChanges || isSaving)
+        .keyboardShortcut("s", modifiers: .command)
+
+        Button {
+            cancelEditing()
+        } label: {
+            Text("Done")
         }
     }
 
@@ -241,6 +307,77 @@ struct DocumentPreviewView: View {
             }
             isLoading = false
         }
+    }
+
+    // MARK: - Edit Mode
+
+    private func enterEditMode() {
+        isLoadingFullContent = true
+
+        Task {
+            let result = await Task.detached(priority: .userInitiated) { [path = file.path] in
+                do {
+                    let content = try String(contentsOfFile: path, encoding: .utf8)
+                    return Result<String, Error>.success(content)
+                } catch {
+                    return Result<String, Error>.failure(error)
+                }
+            }.value
+
+            await MainActor.run {
+                switch result {
+                case .success(let content):
+                    editContent = content
+                    isEditing = true
+                    hasUnsavedChanges = false
+                case .failure(let error):
+                    errorMessage = "Failed to load file for editing: \(error.localizedDescription)"
+                }
+                isLoadingFullContent = false
+            }
+        }
+    }
+
+    private func saveDocument() {
+        guard let location = appState.activeLocation else { return }
+
+        isSaving = true
+        let path = file.path
+        let content = editContent
+        let locationPath = location.rootPath
+
+        Task {
+            do {
+                try FractaBridge.shared.writeFile(
+                    locationPath: locationPath,
+                    filePath: path,
+                    content: content
+                )
+                hasUnsavedChanges = false
+                isEditing = false
+                // Reload the preview to reflect saved changes
+                document = nil
+                isLoading = true
+                await loadDocument()
+            } catch {
+                errorMessage = "Save failed: \(error.localizedDescription)"
+            }
+            isSaving = false
+        }
+    }
+
+    private func cancelEditing() {
+        if hasUnsavedChanges {
+            showDiscardAlert = true
+        } else {
+            isEditing = false
+        }
+    }
+
+    private func discardChanges() {
+        hasUnsavedChanges = false
+        editContent = ""
+        isEditing = false
     }
 
     /// Ultra-fast Markdown parsing - only extract metadata, don't process full content

@@ -3,14 +3,27 @@ import SwiftUI
 #if os(macOS)
 import AppKit
 
-/// Native NSTextView wrapper for efficient large text display
+/// Native NSTextView wrapper for efficient large text display and editing
 struct NativeTextView: NSViewRepresentable {
     let text: String
     let font: NSFont
+    var isEditable: Bool
+    var onTextChange: ((String) -> Void)?
 
-    init(_ text: String, font: NSFont = .monospacedSystemFont(ofSize: 13, weight: .regular)) {
+    init(
+        _ text: String,
+        font: NSFont = .monospacedSystemFont(ofSize: 13, weight: .regular),
+        isEditable: Bool = false,
+        onTextChange: ((String) -> Void)? = nil
+    ) {
         self.text = text
         self.font = font
+        self.isEditable = isEditable
+        self.onTextChange = onTextChange
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onTextChange: onTextChange)
     }
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -18,7 +31,7 @@ struct NativeTextView: NSViewRepresentable {
         let textView = scrollView.documentView as! NSTextView
 
         // Configure for performance
-        textView.isEditable = false
+        textView.isEditable = isEditable
         textView.isSelectable = true
         textView.font = font
         textView.textColor = .labelColor
@@ -37,15 +50,37 @@ struct NativeTextView: NSViewRepresentable {
         textView.wantsLayer = true
         scrollView.wantsLayer = true
 
+        // Set delegate for edit callbacks
+        textView.delegate = context.coordinator
+
         return scrollView
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         guard let textView = scrollView.documentView as? NSTextView else { return }
 
-        // Only update if text changed
-        if textView.string != text {
+        context.coordinator.onTextChange = onTextChange
+        textView.isEditable = isEditable
+
+        // Only update if text changed externally (not from user typing)
+        if textView.string != text && !context.coordinator.isUpdating {
             textView.string = text
+        }
+    }
+
+    class Coordinator: NSObject, NSTextViewDelegate {
+        var onTextChange: ((String) -> Void)?
+        var isUpdating = false
+
+        init(onTextChange: ((String) -> Void)?) {
+            self.onTextChange = onTextChange
+        }
+
+        func textDidChange(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+            isUpdating = true
+            onTextChange?(textView.string)
+            isUpdating = false
         }
     }
 }
@@ -53,21 +88,34 @@ struct NativeTextView: NSViewRepresentable {
 #else
 import UIKit
 
-/// Native UITextView wrapper for efficient large text display
+/// Native UITextView wrapper for efficient large text display and editing
 struct NativeTextView: UIViewRepresentable {
     let text: String
     let font: UIFont
+    var isEditable: Bool
+    var onTextChange: ((String) -> Void)?
 
-    init(_ text: String, font: UIFont = .monospacedSystemFont(ofSize: 14, weight: .regular)) {
+    init(
+        _ text: String,
+        font: UIFont = .monospacedSystemFont(ofSize: 14, weight: .regular),
+        isEditable: Bool = false,
+        onTextChange: ((String) -> Void)? = nil
+    ) {
         self.text = text
         self.font = font
+        self.isEditable = isEditable
+        self.onTextChange = onTextChange
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onTextChange: onTextChange)
     }
 
     func makeUIView(context: Context) -> UITextView {
         let textView = UITextView()
 
         // Configure for performance
-        textView.isEditable = false
+        textView.isEditable = isEditable
         textView.isSelectable = true
         textView.font = font
         textView.textColor = .label
@@ -77,12 +125,34 @@ struct NativeTextView: UIViewRepresentable {
         textView.autocorrectionType = .no
         textView.spellCheckingType = .no
 
+        // Set delegate for edit callbacks
+        textView.delegate = context.coordinator
+
         return textView
     }
 
     func updateUIView(_ textView: UITextView, context: Context) {
-        if textView.text != text {
+        context.coordinator.onTextChange = onTextChange
+        textView.isEditable = isEditable
+
+        // Only update if text changed externally (not from user typing)
+        if textView.text != text && !context.coordinator.isUpdating {
             textView.text = text
+        }
+    }
+
+    class Coordinator: NSObject, UITextViewDelegate {
+        var onTextChange: ((String) -> Void)?
+        var isUpdating = false
+
+        init(onTextChange: ((String) -> Void)?) {
+            self.onTextChange = onTextChange
+        }
+
+        func textViewDidChange(_ textView: UITextView) {
+            isUpdating = true
+            onTextChange?(textView.text)
+            isUpdating = false
         }
     }
 }
