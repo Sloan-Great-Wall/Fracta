@@ -10,6 +10,7 @@ use tantivy::query::QueryParser;
 use tantivy::schema::{
     Field, IndexRecordOption, Schema, TextFieldIndexing, TextOptions, Value, STORED, STRING,
 };
+use tantivy::tokenizer::{LowerCaser, TextAnalyzer};
 use tantivy::{Index, IndexReader, IndexWriter, ReloadPolicy, TantivyDocument};
 use tantivy_jieba::JiebaTokenizer;
 
@@ -50,9 +51,12 @@ pub struct SearchStats {
 }
 
 impl SearchIndex {
-    /// Register custom tokenizers (jieba for CJK support).
+    /// Register custom tokenizers (jieba for CJK + LowerCaser for case-insensitive English).
     fn register_tokenizers(index: &Index) {
-        index.tokenizers().register("jieba", JiebaTokenizer {});
+        let tokenizer = TextAnalyzer::builder(JiebaTokenizer {})
+            .filter(LowerCaser)
+            .build();
+        index.tokenizers().register("jieba", tokenizer);
     }
 
     /// Open or create a search index at the given directory.
@@ -314,6 +318,39 @@ mod tests {
         // The exact ranking depends on BM25, but both should be found
         let paths: Vec<_> = hits.iter().map(|h| h.path.as_str()).collect();
         assert!(paths.contains(&"notes/ml.md"));
+    }
+
+    #[test]
+    fn test_case_insensitive_search() {
+        let mut index = SearchIndex::open_in_memory().unwrap();
+
+        index.begin_write().unwrap();
+        index
+            .add_document(
+                "notes/rust.md",
+                Some("Learning Rust"),
+                "Rust is a Systems Programming language. Section one covers ownership.",
+            )
+            .unwrap();
+        index.commit().unwrap();
+
+        // Lowercase query should find capitalized content
+        let hits = index.search("rust", 10).unwrap();
+        assert_eq!(hits.len(), 1, "lowercase 'rust' should match 'Rust'");
+
+        let hits = index.search("systems", 10).unwrap();
+        assert_eq!(hits.len(), 1, "lowercase 'systems' should match 'Systems'");
+
+        let hits = index.search("section", 10).unwrap();
+        assert_eq!(hits.len(), 1, "lowercase 'section' should match 'Section'");
+
+        // Uppercase query should also work
+        let hits = index.search("RUST", 10).unwrap();
+        assert_eq!(hits.len(), 1, "uppercase 'RUST' should match 'Rust'");
+
+        // Mixed case query
+        let hits = index.search("Programming", 10).unwrap();
+        assert_eq!(hits.len(), 1, "mixed case should match");
     }
 
     #[test]
