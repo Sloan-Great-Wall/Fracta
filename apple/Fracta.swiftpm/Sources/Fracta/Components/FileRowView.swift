@@ -42,11 +42,7 @@ struct FileRowView: View {
                         .font(.glassCaption)
                         .foregroundStyle(.secondary)
 
-                    if file.scope == .ignored {
-                        Label("Ignored", systemImage: "eye.slash")
-                            .font(.glassCaption)
-                            .foregroundStyle(.tertiary)
-                    }
+                    ScopeBadge(scope: file.scope)
                 }
             }
 
@@ -98,6 +94,126 @@ struct FileIconView: View {
             Image(systemName: file.icon)
                 .font(.title2)
                 .foregroundStyle(iconColor)
+        }
+    }
+}
+
+/// Scope badge with tap-to-explain popover
+///
+/// Shows the file's scope state (Managed/Ignored/Plain) and provides
+/// user-facing explanations when tapped, satisfying the 0.1 acceptance
+/// criterion: "UI explains scope states".
+struct ScopeBadge: View {
+    let scope: FileScope
+    @State private var showingExplanation = false
+
+    var body: some View {
+        // Only show badge for non-managed scopes (managed is the default/expected state)
+        if scope != .managed {
+            Button {
+                showingExplanation = true
+            } label: {
+                Label(scope.label, systemImage: scope.icon)
+                    .font(.caption2)
+                    .foregroundStyle(scope.color)
+            }
+            .buttonStyle(.plain)
+            .popover(isPresented: $showingExplanation) {
+                scopeExplanation
+            }
+        }
+    }
+
+    private var scopeExplanation: some View {
+        VStack(alignment: .leading, spacing: Spacing.md) {
+            // Current scope
+            Label(scope.label, systemImage: scope.icon)
+                .font(.headline)
+                .foregroundStyle(scope.color)
+
+            Text(scope.explanation)
+                .font(.body)
+                .foregroundStyle(.primary)
+
+            Divider()
+
+            // All scopes overview
+            Text("Scope Levels")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+
+            VStack(alignment: .leading, spacing: Spacing.sm) {
+                scopeRow(.managed)
+                scopeRow(.ignored)
+                scopeRow(.plain)
+            }
+        }
+        .padding(Spacing.lg)
+        .frame(width: 300)
+    }
+
+    private func scopeRow(_ s: FileScope) -> some View {
+        HStack(spacing: Spacing.sm) {
+            Image(systemName: s.icon)
+                .foregroundStyle(s.color)
+                .frame(width: 20)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(s.label)
+                    .font(.caption)
+                    .fontWeight(s == scope ? .bold : .regular)
+                Text(s.shortDescription)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+// MARK: - FileScope UI Properties
+
+extension FileScope {
+    var label: String {
+        switch self {
+        case .managed: return "Managed"
+        case .ignored: return "Ignored"
+        case .plain: return "Plain"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .managed: return "checkmark.shield"
+        case .ignored: return "eye.slash"
+        case .plain: return "doc"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .managed: return .green
+        case .ignored: return .secondary
+        case .plain: return .orange
+        }
+    }
+
+    var shortDescription: String {
+        switch self {
+        case .managed: return "Indexed, searchable, AI-accessible"
+        case .ignored: return "Visible but not indexed or searched"
+        case .plain: return "Location not managed by Fracta"
+        }
+    }
+
+    var explanation: String {
+        switch self {
+        case .managed:
+            return "This file is managed by Fracta. It's indexed for full-text search, included in AI analysis, and its metadata is tracked. Changes are detected automatically."
+        case .ignored:
+            return "This file is visible in the browser but excluded from indexing and search. Fracta won't analyze or track it. You can change ignore rules in the .fracta/config/ directory."
+        case .plain:
+            return "This location hasn't been initialized as a Fracta-managed folder. Files are browsable but won't be indexed, searched, or analyzed until you enable management."
         }
     }
 }
