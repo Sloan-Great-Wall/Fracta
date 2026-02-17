@@ -132,6 +132,17 @@ class AppState: ObservableObject {
     /// Show AI chat sheet
     @Published var showingAI: Bool = false
 
+    // MARK: - Watcher / Indexing State
+
+    /// Whether the filesystem watcher is active
+    @Published var isWatching: Bool = false
+
+    /// Whether an incremental index update is running
+    @Published var isIndexing: Bool = false
+
+    /// Timer that polls the watcher for events
+    private var watcherTimer: Timer?
+
     // MARK: - Loading State
 
     /// Is performing a long operation
@@ -263,9 +274,65 @@ class AppState: ObservableObject {
                 navigationPath = []
                 // Load folder page for root if exists
                 loadFolderPage(for: location.rootPath)
+                // Start watching for filesystem changes
+                startWatching()
             }
-            // Note: Index building is done manually via Settings > Data Sources > Rebuild Index
-            // Auto-indexing disabled because FractaBridge runs on MainActor
+        }
+    }
+
+    // MARK: - Filesystem Watcher
+
+    /// Start watching the active location for filesystem changes.
+    /// Polls every 2 seconds and triggers incremental index updates.
+    func startWatching() {
+        guard let location = activeLocation else { return }
+        stopWatching()
+
+        do {
+            try FractaBridge.shared.startWatching(locationPath: location.rootPath)
+            isWatching = true
+
+            // Poll every 2 seconds for filesystem events
+            watcherTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.pollWatcherEvents()
+                }
+            }
+        } catch {
+            // Watcher failure is non-fatal — just log and continue
+            print("[Fracta] Watcher failed to start: \(error.localizedDescription)")
+        }
+    }
+
+    /// Stop watching the active location.
+    func stopWatching() {
+        watcherTimer?.invalidate()
+        watcherTimer = nil
+        FractaBridge.shared.stopWatching()
+        isWatching = false
+    }
+
+    /// Poll the watcher for events and trigger incremental index update.
+    private func pollWatcherEvents() {
+        let events = FractaBridge.shared.drainWatcherEvents()
+        guard !events.isEmpty else { return }
+
+        guard let location = activeLocation else { return }
+
+        // Run incremental index update in background
+        isIndexing = true
+        Task {
+            do {
+                _ = try await FractaBridge.buildFullIndexAsync(
+                    label: location.label,
+                    locationPath: location.rootPath
+                )
+            } catch {
+                print("[Fracta] Incremental index update failed: \(error.localizedDescription)")
+            }
+            await MainActor.run {
+                self.isIndexing = false
+            }
         }
     }
 

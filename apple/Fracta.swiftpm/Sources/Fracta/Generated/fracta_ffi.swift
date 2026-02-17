@@ -1654,6 +1654,192 @@ public func FfiConverterTypeFfiLocation_lower(_ value: FfiLocation) -> UnsafeMut
 }
 
 
+
+
+/**
+ * Filesystem watcher for a Location root.
+ *
+ * Watches a directory tree for changes and accumulates events.
+ * Call `drain_events()` periodically (e.g. from a Swift Timer) to
+ * retrieve pending changes and trigger incremental index updates.
+ */
+public protocol FfiWatcherProtocol : AnyObject {
+    
+    /**
+     * Drain all pending filesystem events.
+     *
+     * Returns accumulated events since the last drain and clears the queue.
+     * Call this from a periodic Timer on the Swift side.
+     */
+    func drainEvents()  -> [FfiFsEvent]
+    
+    /**
+     * Check if there are pending events without consuming them.
+     */
+    func hasPendingEvents()  -> Bool
+    
+    /**
+     * Stop watching. After this call, no new events will be accumulated.
+     */
+    func stop() 
+    
+}
+
+/**
+ * Filesystem watcher for a Location root.
+ *
+ * Watches a directory tree for changes and accumulates events.
+ * Call `drain_events()` periodically (e.g. from a Swift Timer) to
+ * retrieve pending changes and trigger incremental index updates.
+ */
+open class FfiWatcher:
+    FfiWatcherProtocol {
+    fileprivate let pointer: UnsafeMutableRawPointer!
+
+    /// Used to instantiate a [FFIObject] without an actual pointer, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoPointer {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+    required public init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
+        self.pointer = pointer
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noPointer: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing [Pointer] the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noPointer: NoPointer) {
+        self.pointer = nil
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiClonePointer() -> UnsafeMutableRawPointer {
+        return try! rustCall { uniffi_fracta_ffi_fn_clone_ffiwatcher(self.pointer, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        guard let pointer = pointer else {
+            return
+        }
+
+        try! rustCall { uniffi_fracta_ffi_fn_free_ffiwatcher(pointer, $0) }
+    }
+
+    
+    /**
+     * Start watching a directory tree.
+     */
+public static func start(root: String)throws  -> FfiWatcher {
+    return try  FfiConverterTypeFfiWatcher.lift(try rustCallWithError(FfiConverterTypeFfiError.lift) {
+    uniffi_fracta_ffi_fn_constructor_ffiwatcher_start(
+        FfiConverterString.lower(root),$0
+    )
+})
+}
+    
+
+    
+    /**
+     * Drain all pending filesystem events.
+     *
+     * Returns accumulated events since the last drain and clears the queue.
+     * Call this from a periodic Timer on the Swift side.
+     */
+open func drainEvents() -> [FfiFsEvent] {
+    return try!  FfiConverterSequenceTypeFfiFsEvent.lift(try! rustCall() {
+    uniffi_fracta_ffi_fn_method_ffiwatcher_drain_events(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Check if there are pending events without consuming them.
+     */
+open func hasPendingEvents() -> Bool {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_fracta_ffi_fn_method_ffiwatcher_has_pending_events(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Stop watching. After this call, no new events will be accumulated.
+     */
+open func stop() {try! rustCall() {
+    uniffi_fracta_ffi_fn_method_ffiwatcher_stop(self.uniffiClonePointer(),$0
+    )
+}
+}
+    
+
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiWatcher: FfiConverter {
+
+    typealias FfiType = UnsafeMutableRawPointer
+    typealias SwiftType = FfiWatcher
+
+    public static func lift(_ pointer: UnsafeMutableRawPointer) throws -> FfiWatcher {
+        return FfiWatcher(unsafeFromRawPointer: pointer)
+    }
+
+    public static func lower(_ value: FfiWatcher) -> UnsafeMutableRawPointer {
+        return value.uniffiClonePointer()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiWatcher {
+        let v: UInt64 = try readInt(&buf)
+        // The Rust code won't compile if a pointer won't fit in a UInt64.
+        // We have to go via `UInt` because that's the thing that's the size of a pointer.
+        let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: v))
+        if (ptr == nil) {
+            throw UniffiInternalError.unexpectedNullPointer
+        }
+        return try lift(ptr!)
+    }
+
+    public static func write(_ value: FfiWatcher, into buf: inout [UInt8]) {
+        // This fiddling is because `Int` is the thing that's the same size as a pointer.
+        // The Rust code won't compile if a pointer won't fit in a `UInt64`.
+        writeInt(&buf, UInt64(bitPattern: Int64(Int(bitPattern: lower(value)))))
+    }
+}
+
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiWatcher_lift(_ pointer: UnsafeMutableRawPointer) throws -> FfiWatcher {
+    return try FfiConverterTypeFfiWatcher.lift(pointer)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiWatcher_lower(_ value: FfiWatcher) -> UnsafeMutableRawPointer {
+    return FfiConverterTypeFfiWatcher.lower(value)
+}
+
+
 /**
  * Statistics from an index build operation.
  */
@@ -2087,6 +2273,101 @@ public func FfiConverterTypeFfiEntry_lift(_ buf: RustBuffer) throws -> FfiEntry 
 #endif
 public func FfiConverterTypeFfiEntry_lower(_ value: FfiEntry) -> RustBuffer {
     return FfiConverterTypeFfiEntry.lower(value)
+}
+
+
+/**
+ * A filesystem change event.
+ */
+public struct FfiFsEvent {
+    /**
+     * Type of change.
+     */
+    public var kind: FfiFsEventKind
+    /**
+     * Absolute path to the affected file/folder.
+     */
+    public var path: String
+    /**
+     * For rename events, the original path (before rename).
+     */
+    public var renamedFrom: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Type of change.
+         */kind: FfiFsEventKind, 
+        /**
+         * Absolute path to the affected file/folder.
+         */path: String, 
+        /**
+         * For rename events, the original path (before rename).
+         */renamedFrom: String?) {
+        self.kind = kind
+        self.path = path
+        self.renamedFrom = renamedFrom
+    }
+}
+
+
+
+extension FfiFsEvent: Equatable, Hashable {
+    public static func ==(lhs: FfiFsEvent, rhs: FfiFsEvent) -> Bool {
+        if lhs.kind != rhs.kind {
+            return false
+        }
+        if lhs.path != rhs.path {
+            return false
+        }
+        if lhs.renamedFrom != rhs.renamedFrom {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(kind)
+        hasher.combine(path)
+        hasher.combine(renamedFrom)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiFsEvent: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiFsEvent {
+        return
+            try FfiFsEvent(
+                kind: FfiConverterTypeFfiFsEventKind.read(from: &buf), 
+                path: FfiConverterString.read(from: &buf), 
+                renamedFrom: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiFsEvent, into buf: inout [UInt8]) {
+        FfiConverterTypeFfiFsEventKind.write(value.kind, into: &buf)
+        FfiConverterString.write(value.path, into: &buf)
+        FfiConverterOptionString.write(value.renamedFrom, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiFsEvent_lift(_ buf: RustBuffer) throws -> FfiFsEvent {
+    return try FfiConverterTypeFfiFsEvent.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiFsEvent_lower(_ value: FfiFsEvent) -> RustBuffer {
+    return FfiConverterTypeFfiFsEvent.lower(value)
 }
 
 
@@ -2570,6 +2851,99 @@ extension FfiError: Foundation.LocalizedError {
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 /**
+ * Type of filesystem event.
+ */
+
+public enum FfiFsEventKind {
+    
+    /**
+     * A file or folder was created.
+     */
+    case created
+    /**
+     * A file was modified.
+     */
+    case modified
+    /**
+     * A file or folder was deleted.
+     */
+    case deleted
+    /**
+     * A file or folder was renamed.
+     */
+    case renamed
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiFsEventKind: FfiConverterRustBuffer {
+    typealias SwiftType = FfiFsEventKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiFsEventKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .created
+        
+        case 2: return .modified
+        
+        case 3: return .deleted
+        
+        case 4: return .renamed
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: FfiFsEventKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .created:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .modified:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .deleted:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .renamed:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiFsEventKind_lift(_ buf: RustBuffer) throws -> FfiFsEventKind {
+    return try FfiConverterTypeFfiFsEventKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiFsEventKind_lower(_ value: FfiFsEventKind) -> RustBuffer {
+    return FfiConverterTypeFfiFsEventKind.lower(value)
+}
+
+
+
+extension FfiFsEventKind: Equatable, Hashable {}
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
  * Scope of an entry within a Location.
  */
 
@@ -2920,6 +3294,31 @@ fileprivate struct FfiConverterSequenceTypeFfiEntry: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeFfiFsEvent: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiFsEvent]
+
+    public static func write(_ value: [FfiFsEvent], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiFsEvent.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiFsEvent] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiFsEvent]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiFsEvent.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeFfiSearchHit: FfiConverterRustBuffer {
     typealias SwiftType = [FfiSearchHit]
 
@@ -2968,7 +3367,7 @@ private enum InitializationResult {
 }
 // Use a global variable to perform the versioning checks. Swift ensures that
 // the code inside is only computed once.
-private nonisolated(unsafe) var initializationResult: InitializationResult = {
+nonisolated(unsafe) private var initializationResult: InitializationResult = {
     // Get the bindings contract version from our ComponentInterface
     let bindings_contract_version = 26
     // Get the scaffolding contract version by calling the into the dylib
@@ -3084,6 +3483,15 @@ private nonisolated(unsafe) var initializationResult: InitializationResult = {
     if (uniffi_fracta_ffi_checksum_method_ffilocation_write_file_bytes() != 56384) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_fracta_ffi_checksum_method_ffiwatcher_drain_events() != 25289) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fracta_ffi_checksum_method_ffiwatcher_has_pending_events() != 58152) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fracta_ffi_checksum_method_ffiwatcher_stop() != 753) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_fracta_ffi_checksum_constructor_ffiaiengine_new_echo() != 36900) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -3103,6 +3511,9 @@ private nonisolated(unsafe) var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fracta_ffi_checksum_constructor_ffilocation_open() != 23315) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fracta_ffi_checksum_constructor_ffiwatcher_start() != 59671) {
         return InitializationResult.apiChecksumMismatch
     }
 

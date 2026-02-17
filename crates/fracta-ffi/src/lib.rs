@@ -681,6 +681,113 @@ impl FfiAiEngine {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// Filesystem Watcher
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Type of filesystem event.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum FfiFsEventKind {
+    /// A file or folder was created.
+    Created,
+    /// A file was modified.
+    Modified,
+    /// A file or folder was deleted.
+    Deleted,
+    /// A file or folder was renamed.
+    Renamed,
+}
+
+/// A filesystem change event.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct FfiFsEvent {
+    /// Type of change.
+    pub kind: FfiFsEventKind,
+    /// Absolute path to the affected file/folder.
+    pub path: String,
+    /// For rename events, the original path (before rename).
+    pub renamed_from: Option<String>,
+}
+
+impl From<fracta_vfs::FsEvent> for FfiFsEvent {
+    fn from(e: fracta_vfs::FsEvent) -> Self {
+        match e {
+            fracta_vfs::FsEvent::Created(p) => FfiFsEvent {
+                kind: FfiFsEventKind::Created,
+                path: p.display().to_string(),
+                renamed_from: None,
+            },
+            fracta_vfs::FsEvent::Modified(p) => FfiFsEvent {
+                kind: FfiFsEventKind::Modified,
+                path: p.display().to_string(),
+                renamed_from: None,
+            },
+            fracta_vfs::FsEvent::Deleted(p) => FfiFsEvent {
+                kind: FfiFsEventKind::Deleted,
+                path: p.display().to_string(),
+                renamed_from: None,
+            },
+            fracta_vfs::FsEvent::Renamed { from, to } => FfiFsEvent {
+                kind: FfiFsEventKind::Renamed,
+                path: to.display().to_string(),
+                renamed_from: Some(from.display().to_string()),
+            },
+        }
+    }
+}
+
+/// Filesystem watcher for a Location root.
+///
+/// Watches a directory tree for changes and accumulates events.
+/// Call `drain_events()` periodically (e.g. from a Swift Timer) to
+/// retrieve pending changes and trigger incremental index updates.
+#[derive(uniffi::Object)]
+pub struct FfiWatcher {
+    inner: Mutex<Option<fracta_vfs::LocationWatcher>>,
+}
+
+#[uniffi::export]
+impl FfiWatcher {
+    /// Start watching a directory tree.
+    #[uniffi::constructor]
+    pub fn start(root: String) -> Result<Self, FfiError> {
+        let watcher = fracta_vfs::LocationWatcher::start(&PathBuf::from(&root))
+            .map_err(|e| FfiError::Io {
+                message: e.to_string(),
+            })?;
+        Ok(FfiWatcher {
+            inner: Mutex::new(Some(watcher)),
+        })
+    }
+
+    /// Drain all pending filesystem events.
+    ///
+    /// Returns accumulated events since the last drain and clears the queue.
+    /// Call this from a periodic Timer on the Swift side.
+    pub fn drain_events(&self) -> Vec<FfiFsEvent> {
+        let guard = self.inner.lock().unwrap();
+        match guard.as_ref() {
+            Some(watcher) => watcher.drain_events().into_iter().map(Into::into).collect(),
+            None => Vec::new(),
+        }
+    }
+
+    /// Check if there are pending events without consuming them.
+    pub fn has_pending_events(&self) -> bool {
+        let guard = self.inner.lock().unwrap();
+        match guard.as_ref() {
+            Some(watcher) => watcher.has_pending_events(),
+            None => false,
+        }
+    }
+
+    /// Stop watching. After this call, no new events will be accumulated.
+    pub fn stop(&self) {
+        let mut guard = self.inner.lock().unwrap();
+        *guard = None;
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Convenience Functions
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -819,6 +926,35 @@ This is a test document.
         let plain = parse_markdown_to_plain_text(md.to_string());
         assert!(plain.contains("Title"));
         assert!(plain.contains("bold"));
+    }
+
+    #[test]
+    fn test_watcher_lifecycle() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path().canonicalize().unwrap();
+        let root_str = root.to_str().unwrap().to_string();
+
+        // Start watcher
+        let watcher = FfiWatcher::start(root_str).unwrap();
+        assert!(!watcher.has_pending_events());
+
+        // Create a file
+        std::fs::write(root.join("test.md"), "hello").unwrap();
+
+        // Wait for debounce
+        std::thread::sleep(std::time::Duration::from_millis(800));
+
+        // Drain events
+        let events = watcher.drain_events();
+        assert!(!events.is_empty(), "Expected filesystem events");
+
+        // Stop watcher
+        watcher.stop();
+        assert!(!watcher.has_pending_events());
+
+        // Drain after stop should be empty
+        let events2 = watcher.drain_events();
+        assert!(events2.is_empty());
     }
 
     #[test]

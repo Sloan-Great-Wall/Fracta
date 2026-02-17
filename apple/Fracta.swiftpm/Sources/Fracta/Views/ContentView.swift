@@ -345,6 +345,13 @@ struct BrowserView: View {
             }
 
             ToolbarItemGroup {
+                // Indexing indicator
+                if appState.isIndexing {
+                    ProgressView()
+                        .controlSize(.small)
+                        .help("Updating index…")
+                }
+
                 Button {
                     appState.isSearching.toggle()
                 } label: {

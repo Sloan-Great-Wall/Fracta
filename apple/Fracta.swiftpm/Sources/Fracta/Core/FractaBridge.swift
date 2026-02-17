@@ -25,6 +25,9 @@ class FractaBridge: ObservableObject {
     /// AI engine instance (lazy — created on first use)
     private var aiEngine: FfiAiEngine?
 
+    /// Active filesystem watcher (one per active location)
+    private var watcher: FfiWatcher?
+
     private init() {
         isInitialized = true
     }
@@ -371,6 +374,35 @@ class FractaBridge: ObservableObject {
         getAiEngine().modelName()
     }
 
+    // MARK: - Filesystem Watcher
+
+    /// Start watching the given location root for changes.
+    func startWatching(locationPath: String) throws {
+        stopWatching()
+        do {
+            watcher = try FfiWatcher.start(root: locationPath)
+        } catch let error as FfiError {
+            throw BridgeError.from(error)
+        }
+    }
+
+    /// Stop the active filesystem watcher.
+    func stopWatching() {
+        watcher?.stop()
+        watcher = nil
+    }
+
+    /// Drain pending filesystem events from the watcher.
+    /// Returns empty array if no watcher is active.
+    func drainWatcherEvents() -> [FfiFsEvent] {
+        watcher?.drainEvents() ?? []
+    }
+
+    /// Check if the watcher has pending events.
+    var hasWatcherEvents: Bool {
+        watcher?.hasPendingEvents() ?? false
+    }
+
     // MARK: - Version
 
     var version: String {
@@ -382,12 +414,14 @@ class FractaBridge: ObservableObject {
 
     /// Close a location and its index
     func closeLocation(path: String) {
+        stopWatching()
         locations.removeValue(forKey: path)
         indexes.removeValue(forKey: path)
     }
 
     /// Close all locations
     func closeAll() {
+        stopWatching()
         locations.removeAll()
         indexes.removeAll()
     }

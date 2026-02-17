@@ -39,3 +39,4 @@ pub use init::init_fracta_dir;
 pub use location::{Location, WalkOptions, FRACTA_DIR};
 pub use scope::Scope;
 pub use settings::LocationSettings;
+pub use watcher::{FsEvent, LocationWatcher};

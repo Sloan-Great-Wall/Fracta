@@ -498,6 +498,36 @@ void uniffi_fracta_ffi_fn_method_ffilocation_write_file(void*_Nonnull ptr, RustB
 void uniffi_fracta_ffi_fn_method_ffilocation_write_file_bytes(void*_Nonnull ptr, RustBuffer path, RustBuffer content, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_FN_CLONE_FFIWATCHER
+#define UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_FN_CLONE_FFIWATCHER
+void*_Nonnull uniffi_fracta_ffi_fn_clone_ffiwatcher(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_FN_FREE_FFIWATCHER
+#define UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_FN_FREE_FFIWATCHER
+void uniffi_fracta_ffi_fn_free_ffiwatcher(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_FN_CONSTRUCTOR_FFIWATCHER_START
+#define UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_FN_CONSTRUCTOR_FFIWATCHER_START
+void*_Nonnull uniffi_fracta_ffi_fn_constructor_ffiwatcher_start(RustBuffer root, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_FN_METHOD_FFIWATCHER_DRAIN_EVENTS
+#define UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_FN_METHOD_FFIWATCHER_DRAIN_EVENTS
+RustBuffer uniffi_fracta_ffi_fn_method_ffiwatcher_drain_events(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_FN_METHOD_FFIWATCHER_HAS_PENDING_EVENTS
+#define UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_FN_METHOD_FFIWATCHER_HAS_PENDING_EVENTS
+int8_t uniffi_fracta_ffi_fn_method_ffiwatcher_has_pending_events(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_FN_METHOD_FFIWATCHER_STOP
+#define UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_FN_METHOD_FFIWATCHER_STOP
+void uniffi_fracta_ffi_fn_method_ffiwatcher_stop(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_FN_FUNC_FFI_VERSION
 #define UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_FN_FUNC_FFI_VERSION
 RustBuffer uniffi_fracta_ffi_fn_func_ffi_version(RustCallStatus *_Nonnull out_status
@@ -1005,6 +1035,24 @@ uint16_t uniffi_fracta_ffi_checksum_method_ffilocation_write_file_bytes(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_CHECKSUM_METHOD_FFIWATCHER_DRAIN_EVENTS
+#define UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_CHECKSUM_METHOD_FFIWATCHER_DRAIN_EVENTS
+uint16_t uniffi_fracta_ffi_checksum_method_ffiwatcher_drain_events(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_CHECKSUM_METHOD_FFIWATCHER_HAS_PENDING_EVENTS
+#define UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_CHECKSUM_METHOD_FFIWATCHER_HAS_PENDING_EVENTS
+uint16_t uniffi_fracta_ffi_checksum_method_ffiwatcher_has_pending_events(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_CHECKSUM_METHOD_FFIWATCHER_STOP
+#define UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_CHECKSUM_METHOD_FFIWATCHER_STOP
+uint16_t uniffi_fracta_ffi_checksum_method_ffiwatcher_stop(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_CHECKSUM_CONSTRUCTOR_FFIAIENGINE_NEW_ECHO
 #define UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_CHECKSUM_CONSTRUCTOR_FFIAIENGINE_NEW_ECHO
 uint16_t uniffi_fracta_ffi_checksum_constructor_ffiaiengine_new_echo(void
@@ -1044,6 +1092,12 @@ uint16_t uniffi_fracta_ffi_checksum_constructor_ffilocation_new(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_CHECKSUM_CONSTRUCTOR_FFILOCATION_OPEN
 #define UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_CHECKSUM_CONSTRUCTOR_FFILOCATION_OPEN
 uint16_t uniffi_fracta_ffi_checksum_constructor_ffilocation_open(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_CHECKSUM_CONSTRUCTOR_FFIWATCHER_START
+#define UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_CHECKSUM_CONSTRUCTOR_FFIWATCHER_START
+uint16_t uniffi_fracta_ffi_checksum_constructor_ffiwatcher_start(void
     
 );
 #endif
