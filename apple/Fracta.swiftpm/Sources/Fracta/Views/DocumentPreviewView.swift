@@ -216,8 +216,8 @@ struct DocumentPreviewView: View {
                     .foregroundStyle(.tertiary)
             }
 
-            // Use native text view for efficient rendering of any size
-            NativeTextView(doc.plainText)
+            // Rich Markdown rendering
+            NativeTextView(attributed: MarkdownRenderer.render(doc.plainText))
                 .frame(minHeight: 200, maxHeight: 600)
                 .glassCard(cornerRadius: 12, padding: Spacing.sm)
 

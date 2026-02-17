@@ -6,6 +6,7 @@ import AppKit
 /// Native NSTextView wrapper for efficient large text display and editing
 struct NativeTextView: NSViewRepresentable {
     let text: String
+    let attributedText: NSAttributedString?
     let font: NSFont
     var isEditable: Bool
     var onTextChange: ((String) -> Void)?
@@ -17,7 +18,21 @@ struct NativeTextView: NSViewRepresentable {
         onTextChange: ((String) -> Void)? = nil
     ) {
         self.text = text
+        self.attributedText = nil
         self.font = font
+        self.isEditable = isEditable
+        self.onTextChange = onTextChange
+    }
+
+    /// Initialize with pre-rendered attributed string (for rich Markdown display)
+    init(
+        attributed: NSAttributedString,
+        isEditable: Bool = false,
+        onTextChange: ((String) -> Void)? = nil
+    ) {
+        self.text = attributed.string
+        self.attributedText = attributed
+        self.font = .systemFont(ofSize: 14)
         self.isEditable = isEditable
         self.onTextChange = onTextChange
     }
@@ -37,6 +52,9 @@ struct NativeTextView: NSViewRepresentable {
         textView.textColor = .labelColor
         textView.backgroundColor = .clear
         textView.drawsBackground = false
+
+        // Enable link clicking in non-editable mode
+        textView.isAutomaticLinkDetectionEnabled = !isEditable
 
         // Disable expensive features for large files
         textView.isAutomaticQuoteSubstitutionEnabled = false
@@ -63,8 +81,18 @@ struct NativeTextView: NSViewRepresentable {
         textView.isEditable = isEditable
 
         // Only update if text changed externally (not from user typing)
-        if textView.string != text && !context.coordinator.isUpdating {
-            textView.string = text
+        guard !context.coordinator.isUpdating else { return }
+
+        if let attrText = attributedText {
+            // Rich text mode
+            if textView.attributedString() != attrText {
+                textView.textStorage?.setAttributedString(attrText)
+            }
+        } else {
+            // Plain text mode
+            if textView.string != text {
+                textView.string = text
+            }
         }
     }
 
@@ -91,6 +119,7 @@ import UIKit
 /// Native UITextView wrapper for efficient large text display and editing
 struct NativeTextView: UIViewRepresentable {
     let text: String
+    let attributedText: NSAttributedString?
     let font: UIFont
     var isEditable: Bool
     var onTextChange: ((String) -> Void)?
@@ -102,7 +131,21 @@ struct NativeTextView: UIViewRepresentable {
         onTextChange: ((String) -> Void)? = nil
     ) {
         self.text = text
+        self.attributedText = nil
         self.font = font
+        self.isEditable = isEditable
+        self.onTextChange = onTextChange
+    }
+
+    /// Initialize with pre-rendered attributed string (for rich Markdown display)
+    init(
+        attributed: NSAttributedString,
+        isEditable: Bool = false,
+        onTextChange: ((String) -> Void)? = nil
+    ) {
+        self.text = attributed.string
+        self.attributedText = attributed
+        self.font = .systemFont(ofSize: 14)
         self.isEditable = isEditable
         self.onTextChange = onTextChange
     }
@@ -136,8 +179,18 @@ struct NativeTextView: UIViewRepresentable {
         textView.isEditable = isEditable
 
         // Only update if text changed externally (not from user typing)
-        if textView.text != text && !context.coordinator.isUpdating {
-            textView.text = text
+        guard !context.coordinator.isUpdating else { return }
+
+        if let attrText = attributedText {
+            // Rich text mode
+            if textView.attributedText != attrText {
+                textView.attributedText = attrText
+            }
+        } else {
+            // Plain text mode
+            if textView.text != text {
+                textView.text = text
+            }
         }
     }
 
