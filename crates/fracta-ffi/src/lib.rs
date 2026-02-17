@@ -4,7 +4,7 @@
 //!
 //! This crate is the single entry-point for platform shells into the
 //! Rust Core. It re-exports a curated, FFI-safe subset of VFS, Note,
-//! and Index APIs. UniFFI generates the Swift/Kotlin bindings
+//! Index, and AI APIs. UniFFI generates the Swift/Kotlin bindings
 //! automatically from the proc-macro annotations.
 //!
 //! ## Architecture
@@ -17,9 +17,9 @@
 //! │ fracta-ffi  │  ← This crate (UniFFI exports)
 //! └──────┬──────┘
 //!        │
-//!   ┌────┴────┬────────────┐
-//!   ▼         ▼            ▼
-//! VFS       Note        Index
+//!   ┌────┴────┬────────────┬──────┐
+//!   ▼         ▼            ▼      ▼
+//! VFS       Note        Index    AI
 //! ```
 
 use std::path::PathBuf;
@@ -556,6 +556,131 @@ impl FfiIndex {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// AI Types
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Role of a participant in a chat conversation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum FfiChatRole {
+    /// System prompt — sets behavior and context.
+    System,
+    /// User message.
+    User,
+    /// Assistant (AI) response.
+    Assistant,
+}
+
+impl From<FfiChatRole> for fracta_ai::ChatRole {
+    fn from(r: FfiChatRole) -> Self {
+        match r {
+            FfiChatRole::System => fracta_ai::ChatRole::System,
+            FfiChatRole::User => fracta_ai::ChatRole::User,
+            FfiChatRole::Assistant => fracta_ai::ChatRole::Assistant,
+        }
+    }
+}
+
+impl From<fracta_ai::ChatRole> for FfiChatRole {
+    fn from(r: fracta_ai::ChatRole) -> Self {
+        match r {
+            fracta_ai::ChatRole::System => FfiChatRole::System,
+            fracta_ai::ChatRole::User => FfiChatRole::User,
+            fracta_ai::ChatRole::Assistant => FfiChatRole::Assistant,
+        }
+    }
+}
+
+/// A single message in a chat conversation.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct FfiChatMessage {
+    /// Role of the message sender.
+    pub role: FfiChatRole,
+    /// Message content.
+    pub content: String,
+}
+
+/// Response from an AI completion request.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct FfiCompletionResponse {
+    /// The generated text.
+    pub content: String,
+    /// Approximate tokens consumed (prompt + completion).
+    pub tokens_used: u32,
+    /// Model identifier that generated this response.
+    pub model: String,
+}
+
+impl From<fracta_ai::AiError> for FfiError {
+    fn from(e: fracta_ai::AiError) -> Self {
+        match e {
+            fracta_ai::AiError::ProviderNotConfigured => FfiError::Internal {
+                message: "AI provider not configured".to_string(),
+            },
+            other => FfiError::Internal {
+                message: other.to_string(),
+            },
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AI Engine
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// AI engine wrapping a pluggable provider.
+///
+/// Use `new_echo()` for development/testing, or future constructors
+/// for cloud and local providers.
+#[derive(uniffi::Object)]
+pub struct FfiAiEngine {
+    provider: Box<dyn fracta_ai::AiProvider>,
+}
+
+#[uniffi::export]
+impl FfiAiEngine {
+    /// Create an AI engine with the echo provider (for testing/development).
+    #[uniffi::constructor]
+    pub fn new_echo() -> Self {
+        FfiAiEngine {
+            provider: Box::new(fracta_ai::EchoProvider),
+        }
+    }
+
+    /// Send a completion request.
+    pub fn complete(
+        &self,
+        messages: Vec<FfiChatMessage>,
+        max_tokens: Option<u32>,
+        temperature: Option<f32>,
+    ) -> Result<FfiCompletionResponse, FfiError> {
+        let request = fracta_ai::CompletionRequest {
+            messages: messages
+                .into_iter()
+                .map(|m| fracta_ai::ChatMessage {
+                    role: m.role.into(),
+                    content: m.content,
+                })
+                .collect(),
+            max_tokens,
+            temperature,
+        };
+
+        let response = self.provider.complete(&request)?;
+
+        Ok(FfiCompletionResponse {
+            content: response.content,
+            tokens_used: response.tokens_used,
+            model: response.model,
+        })
+    }
+
+    /// Get the model name of the active provider.
+    pub fn model_name(&self) -> String {
+        self.provider.model_name().to_string()
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Convenience Functions
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -694,5 +819,27 @@ This is a test document.
         let plain = parse_markdown_to_plain_text(md.to_string());
         assert!(plain.contains("Title"));
         assert!(plain.contains("bold"));
+    }
+
+    #[test]
+    fn test_ai_engine_echo() {
+        let engine = FfiAiEngine::new_echo();
+        assert_eq!(engine.model_name(), "echo-v1");
+
+        let messages = vec![
+            FfiChatMessage {
+                role: FfiChatRole::System,
+                content: "You are helpful.".to_string(),
+            },
+            FfiChatMessage {
+                role: FfiChatRole::User,
+                content: "What is Fracta?".to_string(),
+            },
+        ];
+
+        let response = engine.complete(messages, None, None).unwrap();
+        assert!(response.content.contains("What is Fracta?"));
+        assert_eq!(response.model, "echo-v1");
+        assert!(response.tokens_used > 0);
     }
 }

@@ -251,6 +251,32 @@ typedef void (*UniffiForeignFutureCompleteVoid)(uint64_t, UniffiForeignFutureStr
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_FN_CLONE_FFIAIENGINE
+#define UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_FN_CLONE_FFIAIENGINE
+void*_Nonnull uniffi_fracta_ffi_fn_clone_ffiaiengine(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_FN_FREE_FFIAIENGINE
+#define UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_FN_FREE_FFIAIENGINE
+void uniffi_fracta_ffi_fn_free_ffiaiengine(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_FN_CONSTRUCTOR_FFIAIENGINE_NEW_ECHO
+#define UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_FN_CONSTRUCTOR_FFIAIENGINE_NEW_ECHO
+void*_Nonnull uniffi_fracta_ffi_fn_constructor_ffiaiengine_new_echo(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_FN_METHOD_FFIAIENGINE_COMPLETE
+#define UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_FN_METHOD_FFIAIENGINE_COMPLETE
+RustBuffer uniffi_fracta_ffi_fn_method_ffiaiengine_complete(void*_Nonnull ptr, RustBuffer messages, RustBuffer max_tokens, RustBuffer temperature, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_FN_METHOD_FFIAIENGINE_MODEL_NAME
+#define UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_FN_METHOD_FFIAIENGINE_MODEL_NAME
+RustBuffer uniffi_fracta_ffi_fn_method_ffiaiengine_model_name(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_FN_CLONE_FFIDOCUMENT
 #define UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_FN_CLONE_FFIDOCUMENT
 void*_Nonnull uniffi_fracta_ffi_fn_clone_ffidocument(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -775,6 +801,18 @@ uint16_t uniffi_fracta_ffi_checksum_func_parse_markdown_to_plain_text(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_CHECKSUM_METHOD_FFIAIENGINE_COMPLETE
+#define UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_CHECKSUM_METHOD_FFIAIENGINE_COMPLETE
+uint16_t uniffi_fracta_ffi_checksum_method_ffiaiengine_complete(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_CHECKSUM_METHOD_FFIAIENGINE_MODEL_NAME
+#define UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_CHECKSUM_METHOD_FFIAIENGINE_MODEL_NAME
+uint16_t uniffi_fracta_ffi_checksum_method_ffiaiengine_model_name(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_CHECKSUM_METHOD_FFIDOCUMENT_BLOCK_COUNT
 #define UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_CHECKSUM_METHOD_FFIDOCUMENT_BLOCK_COUNT
 uint16_t uniffi_fracta_ffi_checksum_method_ffidocument_block_count(void
@@ -964,6 +1002,12 @@ uint16_t uniffi_fracta_ffi_checksum_method_ffilocation_write_file(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_CHECKSUM_METHOD_FFILOCATION_WRITE_FILE_BYTES
 #define UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_CHECKSUM_METHOD_FFILOCATION_WRITE_FILE_BYTES
 uint16_t uniffi_fracta_ffi_checksum_method_ffilocation_write_file_bytes(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_CHECKSUM_CONSTRUCTOR_FFIAIENGINE_NEW_ECHO
+#define UNIFFI_FFIDEF_UNIFFI_FRACTA_FFI_CHECKSUM_CONSTRUCTOR_FFIAIENGINE_NEW_ECHO
+uint16_t uniffi_fracta_ffi_checksum_constructor_ffiaiengine_new_echo(void
     
 );
 #endif

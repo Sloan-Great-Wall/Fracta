@@ -16,6 +16,7 @@ uniffi = { version = "0.28", features = ["cli"] }
 fracta-vfs = { workspace = true }
 fracta-note = { workspace = true }
 fracta-index = { workspace = true }
+fracta-ai = { workspace = true }
 
 # Error handling
 thiserror = { workspace = true }

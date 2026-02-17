@@ -98,6 +98,11 @@ struct ContentView: View {
                 }
             }
         }
+        // AI chat sheet
+        .sheet(isPresented: $appState.showingAI) {
+            AiChatView()
+                .environmentObject(appState)
+        }
     }
 
     /// Handle D-pad/arrow navigation between sections
@@ -346,6 +351,13 @@ struct BrowserView: View {
                     Image(systemName: "magnifyingglass")
                 }
                 .keyboardShortcut("f", modifiers: .command)
+
+                Button {
+                    appState.showingAI = true
+                } label: {
+                    Image(systemName: "sparkles")
+                }
+                .keyboardShortcut("j", modifiers: .command)
 
                 Menu {
                     Button("Name") { }

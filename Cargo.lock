@@ -888,12 +888,7 @@ dependencies = [
 name = "fracta-ai"
 version = "0.1.0"
 dependencies = [
- "reqwest",
- "serde",
- "serde_json",
  "thiserror 2.0.18",
- "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -921,6 +916,7 @@ name = "fracta-ffi"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "fracta-ai",
  "fracta-index",
  "fracta-note",
  "fracta-vfs",

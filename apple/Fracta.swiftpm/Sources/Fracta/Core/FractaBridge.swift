@@ -22,6 +22,9 @@ class FractaBridge: ObservableObject {
     /// Cache of open indexes (path -> FfiIndex)
     private var indexes: [String: FfiIndex] = [:]
 
+    /// AI engine instance (lazy — created on first use)
+    private var aiEngine: FfiAiEngine?
+
     private init() {
         isInitialized = true
     }
@@ -315,6 +318,57 @@ class FractaBridge: ObservableObject {
         } catch let error as FfiError {
             throw BridgeError.from(error)
         }
+    }
+
+    // MARK: - AI Operations
+
+    /// Get or create the AI engine (echo provider for development)
+    private func getAiEngine() -> FfiAiEngine {
+        if let engine = aiEngine {
+            return engine
+        }
+        let engine = FfiAiEngine.newEcho()
+        aiEngine = engine
+        return engine
+    }
+
+    /// Send a prompt to the AI and get a response
+    func askAI(prompt: String, systemPrompt: String? = nil) throws -> AiResponse {
+        let engine = getAiEngine()
+
+        var messages: [FfiChatMessage] = []
+
+        let system = systemPrompt ?? "You are a helpful assistant for Fracta, a local-first life operating system. Help the user organize, search, and understand their files and notes."
+        messages.append(FfiChatMessage(role: .system, content: system))
+        messages.append(FfiChatMessage(role: .user, content: prompt))
+
+        do {
+            let response = try engine.complete(messages: messages, maxTokens: nil, temperature: nil)
+            return AiResponse(content: response.content, tokensUsed: response.tokensUsed, model: response.model)
+        } catch let error as FfiError {
+            throw BridgeError.from(error)
+        }
+    }
+
+    /// Send a multi-turn conversation to the AI
+    func chatAI(messages: [(role: AiRole, content: String)]) throws -> AiResponse {
+        let engine = getAiEngine()
+
+        let ffiMessages = messages.map { msg in
+            FfiChatMessage(role: msg.role.toFfi(), content: msg.content)
+        }
+
+        do {
+            let response = try engine.complete(messages: ffiMessages, maxTokens: nil, temperature: nil)
+            return AiResponse(content: response.content, tokensUsed: response.tokensUsed, model: response.model)
+        } catch let error as FfiError {
+            throw BridgeError.from(error)
+        }
+    }
+
+    /// Get the active AI model name
+    var aiModelName: String {
+        getAiEngine().modelName()
     }
 
     // MARK: - Version

@@ -563,6 +563,172 @@ fileprivate struct FfiConverterData: FfiConverterRustBuffer {
 
 
 /**
+ * AI engine wrapping a pluggable provider.
+ *
+ * Use `new_echo()` for development/testing, or future constructors
+ * for cloud and local providers.
+ */
+public protocol FfiAiEngineProtocol : AnyObject {
+    
+    /**
+     * Send a completion request.
+     */
+    func complete(messages: [FfiChatMessage], maxTokens: UInt32?, temperature: Float?) throws  -> FfiCompletionResponse
+    
+    /**
+     * Get the model name of the active provider.
+     */
+    func modelName()  -> String
+    
+}
+
+/**
+ * AI engine wrapping a pluggable provider.
+ *
+ * Use `new_echo()` for development/testing, or future constructors
+ * for cloud and local providers.
+ */
+open class FfiAiEngine:
+    FfiAiEngineProtocol {
+    fileprivate let pointer: UnsafeMutableRawPointer!
+
+    /// Used to instantiate a [FFIObject] without an actual pointer, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoPointer {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+    required public init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
+        self.pointer = pointer
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noPointer: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing [Pointer] the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noPointer: NoPointer) {
+        self.pointer = nil
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiClonePointer() -> UnsafeMutableRawPointer {
+        return try! rustCall { uniffi_fracta_ffi_fn_clone_ffiaiengine(self.pointer, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        guard let pointer = pointer else {
+            return
+        }
+
+        try! rustCall { uniffi_fracta_ffi_fn_free_ffiaiengine(pointer, $0) }
+    }
+
+    
+    /**
+     * Create an AI engine with the echo provider (for testing/development).
+     */
+public static func newEcho() -> FfiAiEngine {
+    return try!  FfiConverterTypeFfiAiEngine.lift(try! rustCall() {
+    uniffi_fracta_ffi_fn_constructor_ffiaiengine_new_echo($0
+    )
+})
+}
+    
+
+    
+    /**
+     * Send a completion request.
+     */
+open func complete(messages: [FfiChatMessage], maxTokens: UInt32?, temperature: Float?)throws  -> FfiCompletionResponse {
+    return try  FfiConverterTypeFfiCompletionResponse.lift(try rustCallWithError(FfiConverterTypeFfiError.lift) {
+    uniffi_fracta_ffi_fn_method_ffiaiengine_complete(self.uniffiClonePointer(),
+        FfiConverterSequenceTypeFfiChatMessage.lower(messages),
+        FfiConverterOptionUInt32.lower(maxTokens),
+        FfiConverterOptionFloat.lower(temperature),$0
+    )
+})
+}
+    
+    /**
+     * Get the model name of the active provider.
+     */
+open func modelName() -> String {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_fracta_ffi_fn_method_ffiaiengine_model_name(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiAiEngine: FfiConverter {
+
+    typealias FfiType = UnsafeMutableRawPointer
+    typealias SwiftType = FfiAiEngine
+
+    public static func lift(_ pointer: UnsafeMutableRawPointer) throws -> FfiAiEngine {
+        return FfiAiEngine(unsafeFromRawPointer: pointer)
+    }
+
+    public static func lower(_ value: FfiAiEngine) -> UnsafeMutableRawPointer {
+        return value.uniffiClonePointer()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiAiEngine {
+        let v: UInt64 = try readInt(&buf)
+        // The Rust code won't compile if a pointer won't fit in a UInt64.
+        // We have to go via `UInt` because that's the thing that's the size of a pointer.
+        let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: v))
+        if (ptr == nil) {
+            throw UniffiInternalError.unexpectedNullPointer
+        }
+        return try lift(ptr!)
+    }
+
+    public static func write(_ value: FfiAiEngine, into buf: inout [UInt8]) {
+        // This fiddling is because `Int` is the thing that's the same size as a pointer.
+        // The Rust code won't compile if a pointer won't fit in a `UInt64`.
+        writeInt(&buf, UInt64(bitPattern: Int64(Int(bitPattern: lower(value)))))
+    }
+}
+
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiAiEngine_lift(_ pointer: UnsafeMutableRawPointer) throws -> FfiAiEngine {
+    return try FfiConverterTypeFfiAiEngine.lift(pointer)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiAiEngine_lower(_ value: FfiAiEngine) -> UnsafeMutableRawPointer {
+    return FfiConverterTypeFfiAiEngine.lower(value)
+}
+
+
+
+
+/**
  * A parsed Markdown document.
  */
 public protocol FfiDocumentProtocol : AnyObject {
@@ -1584,6 +1750,182 @@ public func FfiConverterTypeFfiBuildStats_lower(_ value: FfiBuildStats) -> RustB
 
 
 /**
+ * A single message in a chat conversation.
+ */
+public struct FfiChatMessage {
+    /**
+     * Role of the message sender.
+     */
+    public var role: FfiChatRole
+    /**
+     * Message content.
+     */
+    public var content: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Role of the message sender.
+         */role: FfiChatRole, 
+        /**
+         * Message content.
+         */content: String) {
+        self.role = role
+        self.content = content
+    }
+}
+
+
+
+extension FfiChatMessage: Equatable, Hashable {
+    public static func ==(lhs: FfiChatMessage, rhs: FfiChatMessage) -> Bool {
+        if lhs.role != rhs.role {
+            return false
+        }
+        if lhs.content != rhs.content {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(role)
+        hasher.combine(content)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiChatMessage: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiChatMessage {
+        return
+            try FfiChatMessage(
+                role: FfiConverterTypeFfiChatRole.read(from: &buf), 
+                content: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiChatMessage, into buf: inout [UInt8]) {
+        FfiConverterTypeFfiChatRole.write(value.role, into: &buf)
+        FfiConverterString.write(value.content, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiChatMessage_lift(_ buf: RustBuffer) throws -> FfiChatMessage {
+    return try FfiConverterTypeFfiChatMessage.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiChatMessage_lower(_ value: FfiChatMessage) -> RustBuffer {
+    return FfiConverterTypeFfiChatMessage.lower(value)
+}
+
+
+/**
+ * Response from an AI completion request.
+ */
+public struct FfiCompletionResponse {
+    /**
+     * The generated text.
+     */
+    public var content: String
+    /**
+     * Approximate tokens consumed (prompt + completion).
+     */
+    public var tokensUsed: UInt32
+    /**
+     * Model identifier that generated this response.
+     */
+    public var model: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The generated text.
+         */content: String, 
+        /**
+         * Approximate tokens consumed (prompt + completion).
+         */tokensUsed: UInt32, 
+        /**
+         * Model identifier that generated this response.
+         */model: String) {
+        self.content = content
+        self.tokensUsed = tokensUsed
+        self.model = model
+    }
+}
+
+
+
+extension FfiCompletionResponse: Equatable, Hashable {
+    public static func ==(lhs: FfiCompletionResponse, rhs: FfiCompletionResponse) -> Bool {
+        if lhs.content != rhs.content {
+            return false
+        }
+        if lhs.tokensUsed != rhs.tokensUsed {
+            return false
+        }
+        if lhs.model != rhs.model {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(content)
+        hasher.combine(tokensUsed)
+        hasher.combine(model)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiCompletionResponse: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiCompletionResponse {
+        return
+            try FfiCompletionResponse(
+                content: FfiConverterString.read(from: &buf), 
+                tokensUsed: FfiConverterUInt32.read(from: &buf), 
+                model: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FfiCompletionResponse, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.content, into: &buf)
+        FfiConverterUInt32.write(value.tokensUsed, into: &buf)
+        FfiConverterString.write(value.model, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiCompletionResponse_lift(_ buf: RustBuffer) throws -> FfiCompletionResponse {
+    return try FfiConverterTypeFfiCompletionResponse.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiCompletionResponse_lower(_ value: FfiCompletionResponse) -> RustBuffer {
+    return FfiConverterTypeFfiCompletionResponse.lower(value)
+}
+
+
+/**
  * A filesystem entry (file or folder).
  */
 public struct FfiEntry {
@@ -1922,6 +2264,89 @@ public func FfiConverterTypeFfiWalkOptions_lift(_ buf: RustBuffer) throws -> Ffi
 public func FfiConverterTypeFfiWalkOptions_lower(_ value: FfiWalkOptions) -> RustBuffer {
     return FfiConverterTypeFfiWalkOptions.lower(value)
 }
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Role of a participant in a chat conversation.
+ */
+
+public enum FfiChatRole {
+    
+    /**
+     * System prompt — sets behavior and context.
+     */
+    case system
+    /**
+     * User message.
+     */
+    case user
+    /**
+     * Assistant (AI) response.
+     */
+    case assistant
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFfiChatRole: FfiConverterRustBuffer {
+    typealias SwiftType = FfiChatRole
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FfiChatRole {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .system
+        
+        case 2: return .user
+        
+        case 3: return .assistant
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: FfiChatRole, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .system:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .user:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .assistant:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiChatRole_lift(_ buf: RustBuffer) throws -> FfiChatRole {
+    return try FfiConverterTypeFfiChatRole.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFfiChatRole_lower(_ value: FfiChatRole) -> RustBuffer {
+    return FfiConverterTypeFfiChatRole.lower(value)
+}
+
+
+
+extension FfiChatRole: Equatable, Hashable {}
+
+
 
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
@@ -2276,6 +2701,30 @@ fileprivate struct FfiConverterOptionInt64: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionFloat: FfiConverterRustBuffer {
+    typealias SwiftType = Float?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterFloat.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterFloat.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionDouble: FfiConverterRustBuffer {
     typealias SwiftType = Double?
 
@@ -2421,6 +2870,31 @@ fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeFfiChatMessage: FfiConverterRustBuffer {
+    typealias SwiftType = [FfiChatMessage]
+
+    public static func write(_ value: [FfiChatMessage], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFfiChatMessage.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FfiChatMessage] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FfiChatMessage]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFfiChatMessage.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeFfiEntry: FfiConverterRustBuffer {
     typealias SwiftType = [FfiEntry]
 
@@ -2506,6 +2980,12 @@ private nonisolated(unsafe) var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fracta_ffi_checksum_func_parse_markdown_to_plain_text() != 12442) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fracta_ffi_checksum_method_ffiaiengine_complete() != 548) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fracta_ffi_checksum_method_ffiaiengine_model_name() != 50365) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fracta_ffi_checksum_method_ffidocument_block_count() != 30242) {
@@ -2602,6 +3082,9 @@ private nonisolated(unsafe) var initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fracta_ffi_checksum_method_ffilocation_write_file_bytes() != 56384) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fracta_ffi_checksum_constructor_ffiaiengine_new_echo() != 36900) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fracta_ffi_checksum_constructor_ffidocument_parse() != 10625) {

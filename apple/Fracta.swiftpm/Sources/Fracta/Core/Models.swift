@@ -229,3 +229,27 @@ struct SearchHit: Identifiable {
         self.score = score
     }
 }
+
+// MARK: - AI
+
+/// Role in an AI conversation
+enum AiRole {
+    case system
+    case user
+    case assistant
+
+    func toFfi() -> FfiChatRole {
+        switch self {
+        case .system: return .system
+        case .user: return .user
+        case .assistant: return .assistant
+        }
+    }
+}
+
+/// Response from the AI engine
+struct AiResponse {
+    let content: String
+    let tokensUsed: UInt32
+    let model: String
+}

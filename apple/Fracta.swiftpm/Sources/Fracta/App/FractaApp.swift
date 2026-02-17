@@ -127,6 +127,11 @@ class AppState: ObservableObject {
     /// Show error alert
     @Published var showingError: Bool = false
 
+    // MARK: - AI State
+
+    /// Show AI chat sheet
+    @Published var showingAI: Bool = false
+
     // MARK: - Loading State
 
     /// Is performing a long operation
