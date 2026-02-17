@@ -177,6 +177,162 @@ fn test_sql_injection_defense() {
     assert_eq!(results.len(), 1);
 }
 
+/// Performance profile: measure critical path timings with a large dataset.
+///
+/// Generates 500 Markdown files and 200 non-Markdown files, then measures:
+/// - Directory walk time
+/// - Full index build time
+/// - Search time (10 queries)
+/// - Incremental update time (after modifying 10 files)
+/// - Markdown parse time (largest document)
+///
+/// Not a strict benchmark — this is a regression safety net. The test passes
+/// if all operations complete within generous thresholds.
+#[test]
+fn test_performance_profile_large_dataset() {
+    use std::time::Instant;
+
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path().to_path_buf();
+
+    let mut location = Location::new("perf-test", &root);
+    location.init().unwrap();
+
+    // Generate 500 Markdown files with realistic content
+    let md_count = 500;
+    let other_count = 200;
+
+    for i in 0..md_count {
+        let area = match i % 3 {
+            0 => "library",
+            1 => "now",
+            _ => "past",
+        };
+        let tags: Vec<&str> = match i % 5 {
+            0 => vec!["rust", "programming"],
+            1 => vec!["notes", "personal"],
+            2 => vec!["project", "work"],
+            3 => vec!["learning", "AI"],
+            _ => vec!["misc"],
+        };
+        let tag_str = tags
+            .iter()
+            .map(|t| format!("\"{}\"", t))
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        // Vary content size: some short, some long
+        let body_paragraphs = (i % 10) + 1;
+        let mut body = String::new();
+        for p in 0..body_paragraphs {
+            body.push_str(&format!(
+                "\n## Section {}\n\nThis is paragraph {} of document {}. \
+                 It contains enough text to exercise the full-text search \
+                 indexer and ensure that tokenization, stemming, and CJK \
+                 segmentation are all working correctly under load.\n",
+                p, p, i
+            ));
+        }
+
+        let content = format!(
+            "---\ntitle: Document {}\ntags: [{}]\narea: {}\n---\n\n# Document {}\n{}",
+            i, tag_str, area, i, body
+        );
+        std::fs::write(root.join(format!("doc-{:04}.md", i)), content).unwrap();
+    }
+
+    // Generate non-Markdown files
+    for i in 0..other_count {
+        let ext = match i % 4 {
+            0 => "json",
+            1 => "txt",
+            2 => "yaml",
+            _ => "csv",
+        };
+        std::fs::write(
+            root.join(format!("data-{:04}.{}", i, ext)),
+            format!("content of file {}", i),
+        )
+        .unwrap();
+    }
+
+    let total_files = md_count + other_count;
+    eprintln!("\n=== Performance Profile ({} files, {} Markdown) ===", total_files, md_count);
+
+    // Measure: Directory walk
+    let start = Instant::now();
+    let entries = location.walk(&root, &WalkOptions::default()).unwrap();
+    let walk_ms = start.elapsed().as_millis();
+    assert_eq!(entries.len(), total_files);
+    eprintln!("  Walk ({} entries):      {:>6} ms", entries.len(), walk_ms);
+
+    // Measure: Full index build
+    let mut index = Index::open_in_memory().unwrap();
+    let start = Instant::now();
+    let stats = index.build_full(&location).unwrap();
+    let build_ms = start.elapsed().as_millis();
+    assert_eq!(stats.files_scanned as usize, total_files);
+    assert_eq!(stats.markdown_indexed as usize, md_count);
+    eprintln!("  Full index build:      {:>6} ms ({} files, {} md)", build_ms, stats.files_scanned, stats.markdown_indexed);
+
+    // Measure: Search (10 different queries)
+    // Note: jieba tokenizer is case-sensitive for English text, so
+    // queries must match the case used in the generated content.
+    let queries = ["Document", "paragraph", "document", "exercise", "tokenization",
+                   "indexer", "correctly", "contains", "working", "search"];
+    let start = Instant::now();
+    for query in &queries {
+        let hits = index.search(query, 20).unwrap();
+        assert!(!hits.is_empty(), "Expected results for '{}'", query);
+    }
+    let search_ms = start.elapsed().as_millis();
+    eprintln!("  Search (10 queries):   {:>6} ms", search_ms);
+
+    // Measure: Metadata search
+    let start = Instant::now();
+    let library_results = index.search_by_metadata(Some("library"), None, None, None, 500).unwrap();
+    let now_results = index.search_by_metadata(Some("now"), None, None, None, 500).unwrap();
+    let tag_results = index.search_by_metadata(None, Some("rust"), None, None, 500).unwrap();
+    let meta_ms = start.elapsed().as_millis();
+    eprintln!("  Metadata search (3):   {:>6} ms (lib={}, now={}, tag={})",
+              meta_ms, library_results.len(), now_results.len(), tag_results.len());
+
+    // Measure: Markdown parse (largest document)
+    let large_doc = std::fs::read_to_string(root.join(format!("doc-{:04}.md", md_count - 1))).unwrap();
+    let start = Instant::now();
+    for _ in 0..100 {
+        let _ = Document::parse(&large_doc);
+    }
+    let parse_ms = start.elapsed().as_millis();
+    eprintln!("  Markdown parse (100x): {:>6} ms ({} bytes)", parse_ms, large_doc.len());
+
+    // Measure: Incremental update (modify 10 files)
+    // Need sleep for mtime change detection
+    std::thread::sleep(std::time::Duration::from_secs(2));
+    for i in 0..10 {
+        let path = root.join(format!("doc-{:04}.md", i));
+        let mut content = std::fs::read_to_string(&path).unwrap();
+        content.push_str("\n\n## Updated Section\n\nThis content was added during incremental update test.\n");
+        std::fs::write(&path, content).unwrap();
+    }
+
+    let start = Instant::now();
+    let inc_stats = index.update_incremental(&location).unwrap();
+    let inc_ms = start.elapsed().as_millis();
+    eprintln!("  Incremental update:    {:>6} ms ({} files, {} md)", inc_ms, inc_stats.files_scanned, inc_stats.markdown_indexed);
+
+    eprintln!("=== End Performance Profile ===\n");
+
+    // Generous thresholds — these are safety nets, not strict benchmarks.
+    // On a modern Mac (M1/M2), typical values are well under these.
+    assert!(walk_ms < 5000, "Walk took {} ms (threshold: 5000)", walk_ms);
+    assert!(build_ms < 30000, "Full build took {} ms (threshold: 30000)", build_ms);
+    assert!(search_ms < 2000, "Search took {} ms (threshold: 2000)", search_ms);
+    assert!(meta_ms < 1000, "Metadata search took {} ms (threshold: 1000)", meta_ms);
+    assert!(parse_ms < 5000, "Parse 100x took {} ms (threshold: 5000)", parse_ms);
+    assert!(inc_ms < 30000, "Incremental update took {} ms (threshold: 30000)", inc_ms);
+}
+
 /// Test incremental update detects file changes correctly.
 #[test]
 fn test_incremental_pipeline() {
