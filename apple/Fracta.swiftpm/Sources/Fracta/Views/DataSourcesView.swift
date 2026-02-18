@@ -62,11 +62,8 @@ struct DataSourcesView: View {
             allowsMultipleSelection: false
         ) { result in
             if case .success(let urls) = result, let url = urls.first {
-                if url.startAccessingSecurityScopedResource() {
-                    appState.openLocation(at: url)
-                } else {
-                    appState.openLocation(at: url)
-                }
+                _ = url.startAccessingSecurityScopedResource()
+                appState.openLocation(at: url)
             }
         }
     }

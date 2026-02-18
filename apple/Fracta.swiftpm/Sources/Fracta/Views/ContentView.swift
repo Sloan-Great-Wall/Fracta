@@ -67,14 +67,10 @@ struct ContentView: View {
             switch result {
             case .success(let urls):
                 if let url = urls.first {
-                    // Start accessing security-scoped resource
-                    if url.startAccessingSecurityScopedResource() {
-                        appState.openLocation(at: url)
-                        // Note: stopAccessingSecurityScopedResource() should be called
-                        // when the app is done with the folder, but we keep it open
-                    } else {
-                        appState.openLocation(at: url)
-                    }
+                    // Start security-scoped access for this session;
+                    // addLocation() also creates a persistent bookmark for future launches
+                    _ = url.startAccessingSecurityScopedResource()
+                    appState.openLocation(at: url)
                 }
             case .failure(let error):
                 appState.showError(.locationOpenFailed(error.localizedDescription))

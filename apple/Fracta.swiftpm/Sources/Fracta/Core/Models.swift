@@ -8,6 +8,9 @@ struct LocationState: Identifiable, Equatable, Codable, Hashable {
     let label: String
     let rootPath: String
     var isManaged: Bool
+    /// Security-scoped bookmark data for persisting sandbox access across app launches.
+    /// Nil for locations that don't need security-scoped access (e.g. home directory).
+    var bookmarkData: Data?
 
     /// Check if this location contains or is contained by another path
     func overlaps(with path: String) -> Bool {

@@ -194,6 +194,13 @@ class AppState: ObservableObject {
             return
         }
 
+        // Create security-scoped bookmark for persistent access across app restarts
+        let bookmark = try? url.bookmarkData(
+            options: [.withSecurityScope],
+            includingResourceValuesForKeys: nil,
+            relativeTo: nil
+        )
+
         isLoading = true
         loadingMessage = "Adding location..."
 
@@ -202,7 +209,7 @@ class AppState: ObservableObject {
                 let label = url.lastPathComponent
 
                 // Try to open existing managed location first
-                let locationState: LocationState
+                var locationState: LocationState
                 do {
                     locationState = try FractaBridge.shared.openLocation(
                         label: label,
@@ -215,6 +222,9 @@ class AppState: ObservableObject {
                         path: path
                     )
                 }
+
+                // Attach bookmark data for persistence
+                locationState.bookmarkData = bookmark
 
                 await MainActor.run {
                     // Add to locations if not already present
@@ -412,6 +422,66 @@ class AppState: ObservableObject {
         if let data = UserDefaults.standard.data(forKey: locationsKey),
            let saved = try? JSONDecoder().decode([LocationState].self, from: data) {
             locations = saved
+            // Restore security-scoped access for each location with a bookmark
+            restoreBookmarkAccess()
+        }
+    }
+
+    /// Resolve security-scoped bookmarks and start accessing resources.
+    ///
+    /// Called on app launch to restore sandbox access to user-picked folders.
+    /// If a bookmark is stale (folder moved/renamed), it's refreshed.
+    /// If a bookmark can't be resolved at all, the location is kept but
+    /// may fail when activated (user can re-add it).
+    private func restoreBookmarkAccess() {
+        var needsSave = false
+
+        for i in locations.indices {
+            guard let bookmarkData = locations[i].bookmarkData else { continue }
+
+            var isStale = false
+            do {
+                let url = try URL(
+                    resolvingBookmarkData: bookmarkData,
+                    options: [.withSecurityScope],
+                    relativeTo: nil,
+                    bookmarkDataIsStale: &isStale
+                )
+
+                // Start accessing the security-scoped resource
+                _ = url.startAccessingSecurityScopedResource()
+
+                // If bookmark was stale, refresh it
+                if isStale {
+                    if let freshBookmark = try? url.bookmarkData(
+                        options: [.withSecurityScope],
+                        includingResourceValuesForKeys: nil,
+                        relativeTo: nil
+                    ) {
+                        locations[i].bookmarkData = freshBookmark
+                        needsSave = true
+                    }
+                }
+
+                // Update path in case the folder was moved (bookmark tracks moves)
+                let resolvedPath = url.path
+                if resolvedPath != locations[i].rootPath {
+                    locations[i] = LocationState(
+                        id: locations[i].id,
+                        label: url.lastPathComponent,
+                        rootPath: resolvedPath,
+                        isManaged: locations[i].isManaged,
+                        bookmarkData: locations[i].bookmarkData
+                    )
+                    needsSave = true
+                }
+            } catch {
+                print("[Fracta] Failed to resolve bookmark for '\(locations[i].label)': \(error.localizedDescription)")
+            }
+        }
+
+        if needsSave {
+            saveLocations()
         }
     }
 
