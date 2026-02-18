@@ -333,6 +333,387 @@ fn test_performance_profile_large_dataset() {
     assert!(inc_ms < 30000, "Incremental update took {} ms (threshold: 30000)", inc_ms);
 }
 
+/// Test cache rebuild: deleting `.fracta/cache/` and rebuilding produces identical results.
+///
+/// This validates the core invariant: the filesystem is the source of truth,
+/// and the cache (SQLite + Tantivy) is fully rebuildable from it. After nuking
+/// the cache directory, `Index::open()` + `build_full()` must reproduce:
+/// - Identical file counts (total files, Markdown indexed)
+/// - Identical full-text search results (same paths, same hit count)
+/// - Identical metadata (title, tags, area for each file)
+/// - Identical metadata search results (by area, by tag)
+#[test]
+fn test_cache_rebuild_after_deletion() {
+    // Step 1: Create a managed Location with diverse content
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path().to_path_buf();
+
+    let mut location = Location::new("rebuild-test", &root);
+    location.init().unwrap();
+
+    // Create Markdown files with front matter (various areas, tags)
+    let note1 = r#"---
+title: Rust Programming Guide
+tags: [rust, programming, systems]
+area: library
+---
+
+# Getting Started with Rust
+
+Rust is a systems programming language focused on safety and performance.
+Ownership and borrowing are key concepts.
+"#;
+
+    let note2 = r#"---
+title: 机器学习入门
+tags: [AI, 学习, Python]
+area: library
+---
+
+# 机器学习基础
+
+机器学习是人工智能的核心技术，通过数据训练模型。
+"#;
+
+    let note3 = r#"---
+title: Daily Standup Notes
+area: now
+tags: [project, fracta]
+---
+
+# Current Sprint
+
+Working on the cache rebuild test for Fracta indexing.
+"#;
+
+    let note4 = "# No Front Matter\n\nThis file has no YAML front matter at all.\n";
+
+    std::fs::write(root.join("rust-guide.md"), note1).unwrap();
+    std::fs::write(root.join("ml-intro.md"), note2).unwrap();
+    std::fs::write(root.join("standup.md"), note3).unwrap();
+    std::fs::write(root.join("plain.md"), note4).unwrap();
+
+    // Create subdirectory with nested files
+    std::fs::create_dir_all(root.join("sub")).unwrap();
+    std::fs::write(
+        root.join("sub/nested.md"),
+        "---\ntitle: Nested Note\narea: past\ntags: [reflection]\n---\n# Deep Thought\n\nA nested document for testing path handling.\n",
+    ).unwrap();
+
+    // Non-Markdown files
+    std::fs::write(root.join("data.json"), r#"{"key": "value"}"#).unwrap();
+    std::fs::write(root.join("config.yaml"), "setting: true\n").unwrap();
+
+    // Step 2: Build the initial index ON DISK (not in-memory)
+    let cache_dir = root.join(".fracta").join("cache");
+    let mut index = Index::open(&cache_dir).unwrap();
+    let stats_before = index.build_full(&location).unwrap();
+
+    // Step 3: Record baseline results
+    let file_count_before = index.file_count().unwrap();
+    let indexed_count_before = index.indexed_count().unwrap();
+    let search_doc_count_before = index.search_document_count().unwrap();
+
+    // Full-text search baselines
+    let rust_hits_before = index.search("rust", 10).unwrap();
+    let ml_hits_before = index.search("机器学习", 10).unwrap();
+    let sprint_hits_before = index.search("sprint", 10).unwrap();
+    let nested_hits_before = index.search("nested", 10).unwrap();
+
+    // Metadata search baselines
+    let library_before = index
+        .search_by_metadata(Some("library"), None, None, None, 10)
+        .unwrap();
+    let now_before = index
+        .search_by_metadata(Some("now"), None, None, None, 10)
+        .unwrap();
+    let rust_tag_before = index
+        .search_by_metadata(None, Some("rust"), None, None, 10)
+        .unwrap();
+
+    // Individual metadata baselines
+    let rust_meta_before = index.get_metadata("rust-guide.md").unwrap();
+    let ml_meta_before = index.get_metadata("ml-intro.md").unwrap();
+    let nested_meta_before = index.get_metadata("sub/nested.md").unwrap();
+
+    // Sanity checks on baseline
+    assert_eq!(stats_before.files_scanned, 7, "Should scan 7 files");
+    assert_eq!(stats_before.markdown_indexed, 5, "Should index 5 Markdown files");
+    assert!(!rust_hits_before.is_empty(), "Should find rust results");
+    assert!(!ml_hits_before.is_empty(), "Should find ML results");
+
+    // Step 4: Delete the entire cache directory
+    drop(index); // Close file handles first
+    std::fs::remove_dir_all(&cache_dir).unwrap();
+    assert!(!cache_dir.exists(), "Cache directory should be deleted");
+
+    // Step 5: Rebuild from scratch
+    let mut index = Index::open(&cache_dir).unwrap();
+    let stats_after = index.build_full(&location).unwrap();
+
+    // Step 6: Verify everything matches
+
+    // Build stats
+    assert_eq!(
+        stats_before.files_scanned, stats_after.files_scanned,
+        "files_scanned mismatch"
+    );
+    assert_eq!(
+        stats_before.markdown_indexed, stats_after.markdown_indexed,
+        "markdown_indexed mismatch"
+    );
+
+    // Counts
+    assert_eq!(
+        file_count_before,
+        index.file_count().unwrap(),
+        "file_count mismatch"
+    );
+    assert_eq!(
+        indexed_count_before,
+        index.indexed_count().unwrap(),
+        "indexed_count mismatch"
+    );
+    assert_eq!(
+        search_doc_count_before,
+        index.search_document_count().unwrap(),
+        "search_document_count mismatch"
+    );
+
+    // Full-text search results: same paths and same count
+    let rust_hits_after = index.search("rust", 10).unwrap();
+    assert_eq!(
+        rust_hits_before.len(),
+        rust_hits_after.len(),
+        "rust search hit count mismatch"
+    );
+    let rust_paths_before: Vec<_> = rust_hits_before.iter().map(|h| &h.path).collect();
+    let rust_paths_after: Vec<_> = rust_hits_after.iter().map(|h| &h.path).collect();
+    assert_eq!(rust_paths_before, rust_paths_after, "rust search paths mismatch");
+
+    let ml_hits_after = index.search("机器学习", 10).unwrap();
+    assert_eq!(ml_hits_before.len(), ml_hits_after.len(), "ML search hit count mismatch");
+
+    let sprint_hits_after = index.search("sprint", 10).unwrap();
+    assert_eq!(
+        sprint_hits_before.len(),
+        sprint_hits_after.len(),
+        "sprint search hit count mismatch"
+    );
+
+    let nested_hits_after = index.search("nested", 10).unwrap();
+    assert_eq!(
+        nested_hits_before.len(),
+        nested_hits_after.len(),
+        "nested search hit count mismatch"
+    );
+
+    // Metadata search results
+    let library_after = index
+        .search_by_metadata(Some("library"), None, None, None, 10)
+        .unwrap();
+    let now_after = index
+        .search_by_metadata(Some("now"), None, None, None, 10)
+        .unwrap();
+    let rust_tag_after = index
+        .search_by_metadata(None, Some("rust"), None, None, 10)
+        .unwrap();
+
+    assert_eq!(library_before.len(), library_after.len(), "library area count mismatch");
+    assert_eq!(now_before.len(), now_after.len(), "now area count mismatch");
+    assert_eq!(
+        rust_tag_before.len(),
+        rust_tag_after.len(),
+        "rust tag count mismatch"
+    );
+
+    // Sorted comparison for metadata search (order may vary)
+    let mut lib_before_sorted = library_before.clone();
+    let mut lib_after_sorted = library_after.clone();
+    lib_before_sorted.sort();
+    lib_after_sorted.sort();
+    assert_eq!(lib_before_sorted, lib_after_sorted, "library area paths mismatch");
+
+    // Individual file metadata
+    let rust_meta_after = index.get_metadata("rust-guide.md").unwrap();
+    assert_eq!(
+        rust_meta_before.as_ref().map(|m| m.title.clone()),
+        rust_meta_after.as_ref().map(|m| m.title.clone()),
+        "rust-guide title mismatch"
+    );
+    assert_eq!(
+        rust_meta_before.as_ref().map(|m| m.area.clone()),
+        rust_meta_after.as_ref().map(|m| m.area.clone()),
+        "rust-guide area mismatch"
+    );
+    assert_eq!(
+        rust_meta_before.as_ref().map(|m| m.tags.clone()),
+        rust_meta_after.as_ref().map(|m| m.tags.clone()),
+        "rust-guide tags mismatch"
+    );
+
+    let ml_meta_after = index.get_metadata("ml-intro.md").unwrap();
+    assert_eq!(
+        ml_meta_before.as_ref().map(|m| m.title.clone()),
+        ml_meta_after.as_ref().map(|m| m.title.clone()),
+        "ml-intro title mismatch"
+    );
+
+    let nested_meta_after = index.get_metadata("sub/nested.md").unwrap();
+    assert_eq!(
+        nested_meta_before.as_ref().map(|m| m.title.clone()),
+        nested_meta_after.as_ref().map(|m| m.title.clone()),
+        "nested title mismatch"
+    );
+    assert_eq!(
+        nested_meta_before.as_ref().map(|m| m.area.clone()),
+        nested_meta_after.as_ref().map(|m| m.area.clone()),
+        "nested area mismatch"
+    );
+}
+
+/// Validate cold start performance: Location open + walk + index open must complete in < 2 seconds.
+///
+/// Cold start simulates what happens when the app launches with an existing managed location:
+/// 1. Open Location (read .fracta/config/settings.json)
+/// 2. Walk directory tree (list all files)
+/// 3. Open existing index (SQLite + Tantivy)
+/// 4. First search query
+///
+/// Target: total < 2000 ms for a 200-file location.
+#[test]
+fn test_cold_start_performance() {
+    use std::time::Instant;
+
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path().to_path_buf();
+
+    // Setup: create a managed location with 200 files and build initial index
+    let mut location = Location::new("cold-start", &root);
+    location.init().unwrap();
+
+    for i in 0..150 {
+        let content = format!(
+            "---\ntitle: Note {}\narea: library\ntags: [test]\n---\n\n# Note {}\n\nContent for note {}.\n",
+            i, i, i
+        );
+        std::fs::write(root.join(format!("note-{:04}.md", i)), content).unwrap();
+    }
+    for i in 0..50 {
+        std::fs::write(root.join(format!("data-{:04}.json", i)), "{}").unwrap();
+    }
+
+    // Build initial index on disk (this is the pre-existing state)
+    let cache_dir = root.join(".fracta").join("cache");
+    let mut index = Index::open(&cache_dir).unwrap();
+    index.build_full(&location).unwrap();
+    drop(index);
+
+    // === Simulate cold start (app just launched) ===
+    let total_start = Instant::now();
+
+    // Step 1: Open existing location
+    let open_start = Instant::now();
+    let location = Location::open("cold-start", &root).unwrap();
+    let open_ms = open_start.elapsed().as_millis();
+
+    // Step 2: Walk directory
+    let walk_start = Instant::now();
+    let entries = location.walk(&root, &WalkOptions::default()).unwrap();
+    let walk_ms = walk_start.elapsed().as_millis();
+    assert_eq!(entries.len(), 200);
+
+    // Step 3: Open existing index
+    let index_start = Instant::now();
+    let index = Index::open(&cache_dir).unwrap();
+    let index_ms = index_start.elapsed().as_millis();
+
+    // Step 4: First search query
+    let search_start = Instant::now();
+    let hits = index.search("note", 20).unwrap();
+    let search_ms = search_start.elapsed().as_millis();
+    assert!(!hits.is_empty());
+
+    let total_ms = total_start.elapsed().as_millis();
+
+    eprintln!("\n=== Cold Start Performance (200 files) ===");
+    eprintln!("  Open location: {:>6} ms", open_ms);
+    eprintln!("  Walk directory: {:>6} ms", walk_ms);
+    eprintln!("  Open index:     {:>6} ms", index_ms);
+    eprintln!("  First search:   {:>6} ms", search_ms);
+    eprintln!("  TOTAL:          {:>6} ms (target: 2000)", total_ms);
+    eprintln!("=== End Cold Start ===\n");
+
+    assert!(total_ms < 2000, "Cold start took {} ms (target: < 2000)", total_ms);
+}
+
+/// Validate view switch performance: file read + parse must complete in < 300 ms.
+///
+/// View switch simulates what happens when a user clicks on a Markdown file:
+/// 1. Read file from disk
+/// 2. Parse Markdown (extract frontmatter + plain text)
+///
+/// Target: total < 300 ms even for large files.
+#[test]
+fn test_view_switch_performance() {
+    use std::time::Instant;
+
+    let tmp = TempDir::new().unwrap();
+    let root = tmp.path().to_path_buf();
+
+    // Create files of varying sizes
+    let small_content = "---\ntitle: Small\n---\n# Hello\n\nShort note.\n";
+    let mut medium_content = String::from("---\ntitle: Medium Document\ntags: [test]\n---\n\n");
+    for i in 0..100 {
+        medium_content.push_str(&format!("## Section {}\n\nParagraph {} with some content about programming.\n\n", i, i));
+    }
+    let mut large_content = String::from("---\ntitle: Large Document\ntags: [test, large]\narea: library\n---\n\n");
+    for i in 0..1000 {
+        large_content.push_str(&format!(
+            "## Section {}\n\nThis is section {} of a large document. It contains enough text \
+             to simulate real-world note files with substantial content. The quick brown fox \
+             jumps over the lazy dog multiple times in section {}.\n\n",
+            i, i, i
+        ));
+    }
+
+    std::fs::write(root.join("small.md"), small_content).unwrap();
+    std::fs::write(root.join("medium.md"), &medium_content).unwrap();
+    std::fs::write(root.join("large.md"), &large_content).unwrap();
+
+    eprintln!("\n=== View Switch Performance ===");
+    eprintln!("  File sizes: small={} B, medium={} B, large={} B",
+              small_content.len(), medium_content.len(), large_content.len());
+
+    // Measure each file: read + parse
+    for (name, path) in [
+        ("small.md", root.join("small.md")),
+        ("medium.md", root.join("medium.md")),
+        ("large.md", root.join("large.md")),
+    ] {
+        let start = Instant::now();
+        let content = std::fs::read_to_string(&path).unwrap();
+        let read_ms = start.elapsed().as_micros() as f64 / 1000.0;
+
+        let parse_start = Instant::now();
+        let doc = Document::parse(&content);
+        let parse_ms = parse_start.elapsed().as_micros() as f64 / 1000.0;
+
+        let total_ms = start.elapsed().as_micros() as f64 / 1000.0;
+
+        eprintln!("  {}: read={:.1} ms, parse={:.1} ms, total={:.1} ms (title={:?})",
+                  name, read_ms, parse_ms, total_ms, doc.title());
+
+        assert!(
+            total_ms < 300.0,
+            "{}: view switch took {:.1} ms (target: < 300)",
+            name, total_ms
+        );
+    }
+
+    eprintln!("=== End View Switch ===\n");
+}
+
 /// Test incremental update detects file changes correctly.
 #[test]
 fn test_incremental_pipeline() {
