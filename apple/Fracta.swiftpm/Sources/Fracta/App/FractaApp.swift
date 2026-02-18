@@ -155,15 +155,29 @@ class AppState: ObservableObject {
     private let locationsKey = "fracta.locations"
     private let quickAccessKey = "fracta.quickAccess"
 
+    /// Cold start timing span (measures init → first content visible)
+    private var coldStartSpan: PerfSpan?
+
     init() {
+        let span = PerfLog.begin("Cold start: AppState.init")
+
         // Load persisted data
-        loadLocations()
-        loadQuickAccess()
+        PerfLog.measure("Cold start: loadLocations") {
+            loadLocations()
+        }
+        PerfLog.measure("Cold start: loadQuickAccess") {
+            loadQuickAccess()
+        }
+
+        span.end()
 
         // Show onboarding on first launch
         if !hasCompletedOnboarding {
             showingOnboarding = true
         }
+
+        // Start the end-to-end cold start timer (ended in activateLocation)
+        coldStartSpan = PerfLog.begin("Cold start: total (init → first content)")
     }
 
     /// Open home directory if onboarding is complete and no location is open
@@ -248,6 +262,8 @@ class AppState: ObservableObject {
 
     /// Activate a location for browsing
     func activateLocation(_ location: LocationState) {
+        let span = PerfLog.begin("activateLocation(\(location.label))")
+
         // Ensure the location is opened in the Rust backend
         Task {
             do {
@@ -286,6 +302,12 @@ class AppState: ObservableObject {
                 loadFolderPage(for: location.rootPath)
                 // Start watching for filesystem changes
                 startWatching()
+
+                span.end()
+
+                // End the end-to-end cold start timer (if this is the first activation)
+                coldStartSpan?.validate(target: 2000)
+                coldStartSpan = nil
             }
         }
     }

@@ -284,6 +284,8 @@ struct DocumentPreviewView: View {
             return
         }
 
+        let span = PerfLog.begin("View switch: loadDocument(\(file.name))")
+
         // Read and parse on background thread
         let result = await Task.detached(priority: .userInitiated) { [path = file.path] in
             do {
@@ -306,6 +308,8 @@ struct DocumentPreviewView: View {
                 errorMessage = error.localizedDescription
             }
             isLoading = false
+
+            span.validate(target: 300)
         }
     }
 
