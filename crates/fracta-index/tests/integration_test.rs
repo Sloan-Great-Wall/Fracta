@@ -257,7 +257,10 @@ fn test_performance_profile_large_dataset() {
     }
 
     let total_files = md_count + other_count;
-    eprintln!("\n=== Performance Profile ({} files, {} Markdown) ===", total_files, md_count);
+    eprintln!(
+        "\n=== Performance Profile ({} files, {} Markdown) ===",
+        total_files, md_count
+    );
 
     // Measure: Directory walk
     let start = Instant::now();
@@ -271,15 +274,28 @@ fn test_performance_profile_large_dataset() {
     let start = Instant::now();
     let stats = index.build_full(&location).unwrap();
     let build_ms = start.elapsed().as_millis();
-    assert_eq!(stats.files_scanned as usize, total_files);
-    assert_eq!(stats.markdown_indexed as usize, md_count);
-    eprintln!("  Full index build:      {:>6} ms ({} files, {} md)", build_ms, stats.files_scanned, stats.markdown_indexed);
+    assert_eq!(stats.files_scanned, total_files);
+    assert_eq!(stats.markdown_indexed, md_count);
+    eprintln!(
+        "  Full index build:      {:>6} ms ({} files, {} md)",
+        build_ms, stats.files_scanned, stats.markdown_indexed
+    );
 
     // Measure: Search (10 different queries)
     // Note: jieba tokenizer is case-sensitive for English text, so
     // queries must match the case used in the generated content.
-    let queries = ["Document", "paragraph", "document", "exercise", "tokenization",
-                   "indexer", "correctly", "contains", "working", "search"];
+    let queries = [
+        "Document",
+        "paragraph",
+        "document",
+        "exercise",
+        "tokenization",
+        "indexer",
+        "correctly",
+        "contains",
+        "working",
+        "search",
+    ];
     let start = Instant::now();
     for query in &queries {
         let hits = index.search(query, 20).unwrap();
@@ -290,21 +306,37 @@ fn test_performance_profile_large_dataset() {
 
     // Measure: Metadata search
     let start = Instant::now();
-    let library_results = index.search_by_metadata(Some("library"), None, None, None, 500).unwrap();
-    let now_results = index.search_by_metadata(Some("now"), None, None, None, 500).unwrap();
-    let tag_results = index.search_by_metadata(None, Some("rust"), None, None, 500).unwrap();
+    let library_results = index
+        .search_by_metadata(Some("library"), None, None, None, 500)
+        .unwrap();
+    let now_results = index
+        .search_by_metadata(Some("now"), None, None, None, 500)
+        .unwrap();
+    let tag_results = index
+        .search_by_metadata(None, Some("rust"), None, None, 500)
+        .unwrap();
     let meta_ms = start.elapsed().as_millis();
-    eprintln!("  Metadata search (3):   {:>6} ms (lib={}, now={}, tag={})",
-              meta_ms, library_results.len(), now_results.len(), tag_results.len());
+    eprintln!(
+        "  Metadata search (3):   {:>6} ms (lib={}, now={}, tag={})",
+        meta_ms,
+        library_results.len(),
+        now_results.len(),
+        tag_results.len()
+    );
 
     // Measure: Markdown parse (largest document)
-    let large_doc = std::fs::read_to_string(root.join(format!("doc-{:04}.md", md_count - 1))).unwrap();
+    let large_doc =
+        std::fs::read_to_string(root.join(format!("doc-{:04}.md", md_count - 1))).unwrap();
     let start = Instant::now();
     for _ in 0..100 {
         let _ = Document::parse(&large_doc);
     }
     let parse_ms = start.elapsed().as_millis();
-    eprintln!("  Markdown parse (100x): {:>6} ms ({} bytes)", parse_ms, large_doc.len());
+    eprintln!(
+        "  Markdown parse (100x): {:>6} ms ({} bytes)",
+        parse_ms,
+        large_doc.len()
+    );
 
     // Measure: Incremental update (modify 10 files)
     // Need sleep for mtime change detection
@@ -312,25 +344,50 @@ fn test_performance_profile_large_dataset() {
     for i in 0..10 {
         let path = root.join(format!("doc-{:04}.md", i));
         let mut content = std::fs::read_to_string(&path).unwrap();
-        content.push_str("\n\n## Updated Section\n\nThis content was added during incremental update test.\n");
+        content.push_str(
+            "\n\n## Updated Section\n\nThis content was added during incremental update test.\n",
+        );
         std::fs::write(&path, content).unwrap();
     }
 
     let start = Instant::now();
     let inc_stats = index.update_incremental(&location).unwrap();
     let inc_ms = start.elapsed().as_millis();
-    eprintln!("  Incremental update:    {:>6} ms ({} files, {} md)", inc_ms, inc_stats.files_scanned, inc_stats.markdown_indexed);
+    eprintln!(
+        "  Incremental update:    {:>6} ms ({} files, {} md)",
+        inc_ms, inc_stats.files_scanned, inc_stats.markdown_indexed
+    );
 
     eprintln!("=== End Performance Profile ===\n");
 
     // Generous thresholds — these are safety nets, not strict benchmarks.
     // On a modern Mac (M1/M2), typical values are well under these.
     assert!(walk_ms < 5000, "Walk took {} ms (threshold: 5000)", walk_ms);
-    assert!(build_ms < 30000, "Full build took {} ms (threshold: 30000)", build_ms);
-    assert!(search_ms < 2000, "Search took {} ms (threshold: 2000)", search_ms);
-    assert!(meta_ms < 1000, "Metadata search took {} ms (threshold: 1000)", meta_ms);
-    assert!(parse_ms < 5000, "Parse 100x took {} ms (threshold: 5000)", parse_ms);
-    assert!(inc_ms < 30000, "Incremental update took {} ms (threshold: 30000)", inc_ms);
+    assert!(
+        build_ms < 30000,
+        "Full build took {} ms (threshold: 30000)",
+        build_ms
+    );
+    assert!(
+        search_ms < 2000,
+        "Search took {} ms (threshold: 2000)",
+        search_ms
+    );
+    assert!(
+        meta_ms < 1000,
+        "Metadata search took {} ms (threshold: 1000)",
+        meta_ms
+    );
+    assert!(
+        parse_ms < 5000,
+        "Parse 100x took {} ms (threshold: 5000)",
+        parse_ms
+    );
+    assert!(
+        inc_ms < 30000,
+        "Incremental update took {} ms (threshold: 30000)",
+        inc_ms
+    );
 }
 
 /// Test cache rebuild: deleting `.fracta/cache/` and rebuilding produces identical results.
@@ -438,7 +495,10 @@ Working on the cache rebuild test for Fracta indexing.
 
     // Sanity checks on baseline
     assert_eq!(stats_before.files_scanned, 7, "Should scan 7 files");
-    assert_eq!(stats_before.markdown_indexed, 5, "Should index 5 Markdown files");
+    assert_eq!(
+        stats_before.markdown_indexed, 5,
+        "Should index 5 Markdown files"
+    );
     assert!(!rust_hits_before.is_empty(), "Should find rust results");
     assert!(!ml_hits_before.is_empty(), "Should find ML results");
 
@@ -489,10 +549,17 @@ Working on the cache rebuild test for Fracta indexing.
     );
     let rust_paths_before: Vec<_> = rust_hits_before.iter().map(|h| &h.path).collect();
     let rust_paths_after: Vec<_> = rust_hits_after.iter().map(|h| &h.path).collect();
-    assert_eq!(rust_paths_before, rust_paths_after, "rust search paths mismatch");
+    assert_eq!(
+        rust_paths_before, rust_paths_after,
+        "rust search paths mismatch"
+    );
 
     let ml_hits_after = index.search("机器学习", 10).unwrap();
-    assert_eq!(ml_hits_before.len(), ml_hits_after.len(), "ML search hit count mismatch");
+    assert_eq!(
+        ml_hits_before.len(),
+        ml_hits_after.len(),
+        "ML search hit count mismatch"
+    );
 
     let sprint_hits_after = index.search("sprint", 10).unwrap();
     assert_eq!(
@@ -519,7 +586,11 @@ Working on the cache rebuild test for Fracta indexing.
         .search_by_metadata(None, Some("rust"), None, None, 10)
         .unwrap();
 
-    assert_eq!(library_before.len(), library_after.len(), "library area count mismatch");
+    assert_eq!(
+        library_before.len(),
+        library_after.len(),
+        "library area count mismatch"
+    );
     assert_eq!(now_before.len(), now_after.len(), "now area count mismatch");
     assert_eq!(
         rust_tag_before.len(),
@@ -532,7 +603,10 @@ Working on the cache rebuild test for Fracta indexing.
     let mut lib_after_sorted = library_after.clone();
     lib_before_sorted.sort();
     lib_after_sorted.sort();
-    assert_eq!(lib_before_sorted, lib_after_sorted, "library area paths mismatch");
+    assert_eq!(
+        lib_before_sorted, lib_after_sorted,
+        "library area paths mismatch"
+    );
 
     // Individual file metadata
     let rust_meta_after = index.get_metadata("rust-guide.md").unwrap();
@@ -644,7 +718,11 @@ fn test_cold_start_performance() {
     eprintln!("  TOTAL:          {:>6} ms (target: 2000)", total_ms);
     eprintln!("=== End Cold Start ===\n");
 
-    assert!(total_ms < 2000, "Cold start took {} ms (target: < 2000)", total_ms);
+    assert!(
+        total_ms < 2000,
+        "Cold start took {} ms (target: < 2000)",
+        total_ms
+    );
 }
 
 /// Validate view switch performance: file read + parse must complete in < 300 ms.
@@ -665,9 +743,13 @@ fn test_view_switch_performance() {
     let small_content = "---\ntitle: Small\n---\n# Hello\n\nShort note.\n";
     let mut medium_content = String::from("---\ntitle: Medium Document\ntags: [test]\n---\n\n");
     for i in 0..100 {
-        medium_content.push_str(&format!("## Section {}\n\nParagraph {} with some content about programming.\n\n", i, i));
+        medium_content.push_str(&format!(
+            "## Section {}\n\nParagraph {} with some content about programming.\n\n",
+            i, i
+        ));
     }
-    let mut large_content = String::from("---\ntitle: Large Document\ntags: [test, large]\narea: library\n---\n\n");
+    let mut large_content =
+        String::from("---\ntitle: Large Document\ntags: [test, large]\narea: library\n---\n\n");
     for i in 0..1000 {
         large_content.push_str(&format!(
             "## Section {}\n\nThis is section {} of a large document. It contains enough text \
@@ -682,8 +764,12 @@ fn test_view_switch_performance() {
     std::fs::write(root.join("large.md"), &large_content).unwrap();
 
     eprintln!("\n=== View Switch Performance ===");
-    eprintln!("  File sizes: small={} B, medium={} B, large={} B",
-              small_content.len(), medium_content.len(), large_content.len());
+    eprintln!(
+        "  File sizes: small={} B, medium={} B, large={} B",
+        small_content.len(),
+        medium_content.len(),
+        large_content.len()
+    );
 
     // Measure each file: read + parse
     for (name, path) in [
@@ -701,13 +787,20 @@ fn test_view_switch_performance() {
 
         let total_ms = start.elapsed().as_micros() as f64 / 1000.0;
 
-        eprintln!("  {}: read={:.1} ms, parse={:.1} ms, total={:.1} ms (title={:?})",
-                  name, read_ms, parse_ms, total_ms, doc.title());
+        eprintln!(
+            "  {}: read={:.1} ms, parse={:.1} ms, total={:.1} ms (title={:?})",
+            name,
+            read_ms,
+            parse_ms,
+            total_ms,
+            doc.title()
+        );
 
         assert!(
             total_ms < 300.0,
             "{}: view switch took {:.1} ms (target: < 300)",
-            name, total_ms
+            name,
+            total_ms
         );
     }
 

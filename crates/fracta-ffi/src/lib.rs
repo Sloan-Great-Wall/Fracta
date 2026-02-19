@@ -750,10 +750,11 @@ impl FfiWatcher {
     /// Start watching a directory tree.
     #[uniffi::constructor]
     pub fn start(root: String) -> Result<Self, FfiError> {
-        let watcher = fracta_vfs::LocationWatcher::start(&PathBuf::from(&root))
-            .map_err(|e| FfiError::Io {
+        let watcher = fracta_vfs::LocationWatcher::start(&PathBuf::from(&root)).map_err(|e| {
+            FfiError::Io {
                 message: e.to_string(),
-            })?;
+            }
+        })?;
         Ok(FfiWatcher {
             inner: Mutex::new(Some(watcher)),
         })

@@ -11,8 +11,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use notify_debouncer_mini::{new_debouncer, DebouncedEventKind, Debouncer};
 use notify::{RecommendedWatcher, RecursiveMode};
+use notify_debouncer_mini::{new_debouncer, DebouncedEventKind, Debouncer};
 
 use crate::error::{VfsError, VfsResult};
 
@@ -26,10 +26,7 @@ pub enum FsEvent {
     /// A file or folder was deleted.
     Deleted(PathBuf),
     /// A file or folder was renamed.
-    Renamed {
-        from: PathBuf,
-        to: PathBuf,
-    },
+    Renamed { from: PathBuf, to: PathBuf },
 }
 
 /// Filesystem watcher for a Location root.
@@ -59,9 +56,7 @@ impl LocationWatcher {
                         let mut queue = events_clone.lock().unwrap();
                         for event in debounced_events {
                             // Skip .fracta/ internal changes
-                            if event.path.components().any(|c| {
-                                c.as_os_str() == ".fracta"
-                            }) {
+                            if event.path.components().any(|c| c.as_os_str() == ".fracta") {
                                 continue;
                             }
 
@@ -151,8 +146,14 @@ mod tests {
         assert!(!events.is_empty(), "Expected at least one event");
 
         // Should be a Modified event
-        let has_modify = events.iter().any(|e| matches!(e, FsEvent::Modified(p) if p == &file_path));
-        assert!(has_modify, "Expected Modified event for {:?}, got {:?}", file_path, events);
+        let has_modify = events
+            .iter()
+            .any(|e| matches!(e, FsEvent::Modified(p) if p == &file_path));
+        assert!(
+            has_modify,
+            "Expected Modified event for {:?}, got {:?}",
+            file_path, events
+        );
     }
 
     #[test]
@@ -174,8 +175,14 @@ mod tests {
         let events = watcher.drain_events();
         assert!(!events.is_empty(), "Expected at least one event");
 
-        let has_delete = events.iter().any(|e| matches!(e, FsEvent::Deleted(p) if p == &file_path));
-        assert!(has_delete, "Expected Deleted event for {:?}, got {:?}", file_path, events);
+        let has_delete = events
+            .iter()
+            .any(|e| matches!(e, FsEvent::Deleted(p) if p == &file_path));
+        assert!(
+            has_delete,
+            "Expected Deleted event for {:?}, got {:?}",
+            file_path, events
+        );
     }
 
     #[test]
