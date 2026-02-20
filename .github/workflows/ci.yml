@@ -74,7 +74,7 @@ jobs:
   # ──────────────────────────────────────────────
 
   msrv:
-    name: MSRV (${{ env.RUST_VERSION }})
+    name: MSRV (1.84)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
