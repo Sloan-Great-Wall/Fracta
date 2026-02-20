@@ -45,7 +45,7 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v7", "serde"] }
 
 # Database (metadata index)
-rusqlite = { version = "0.32", features = ["bundled", "modern_sqlite"] }
+rusqlite = { version = "0.38", features = ["bundled", "modern_sqlite"] }
 
 # Full-text search (ADR-0015: Tantivy for search quality + CJK support)
 tantivy = "0.22"
