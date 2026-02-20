@@ -49,7 +49,7 @@ rusqlite = { version = "0.32", features = ["bundled", "modern_sqlite"] }
 
 # Full-text search (ADR-0015: Tantivy for search quality + CJK support)
 tantivy = "0.22"
-tantivy-jieba = "0.11"
+tantivy-jieba = "0.18"
 
 # File watching
 notify = "7"
