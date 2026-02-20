@@ -10,7 +10,7 @@ name = "fracta_ffi"
 
 [dependencies]
 # UniFFI for cross-language bindings
-uniffi = { version = "0.28", features = ["cli"] }
+uniffi = { version = "0.31", features = ["cli"] }
 
 # Internal crates
 fracta-vfs = { workspace = true }
@@ -25,7 +25,7 @@ thiserror = { workspace = true }
 chrono = { workspace = true }
 
 [build-dependencies]
-uniffi = { version = "0.28", features = ["build"] }
+uniffi = { version = "0.31", features = ["build"] }
 
 [[bin]]
 name = "uniffi-bindgen"
