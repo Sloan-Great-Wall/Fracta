@@ -53,7 +53,7 @@ tantivy-jieba = "0.11"
 
 # File watching
 notify = "7"
-notify-debouncer-mini = "0.5"
+notify-debouncer-mini = "0.7"
 
 # Markdown (GFM superset — tables, task lists, strikethrough, footnotes; full mutable AST)
 comrak = "0.36"
