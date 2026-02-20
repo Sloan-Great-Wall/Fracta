@@ -52,7 +52,7 @@ tantivy = "0.22"
 tantivy-jieba = "0.11"
 
 # File watching
-notify = "7"
+notify = "8"
 notify-debouncer-mini = "0.5"
 
 # Markdown (GFM superset — tables, task lists, strikethrough, footnotes; full mutable AST)
