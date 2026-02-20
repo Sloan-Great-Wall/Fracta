@@ -9,9 +9,14 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  # Pin Rust version for reproducibility (update via Dependabot or manually)
+  RUST_VERSION: "1.84"
 
 jobs:
-  # Format check - fast fail
+  # ──────────────────────────────────────────────
+  # Fast checks (< 30s) — run first, fail fast
+  # ──────────────────────────────────────────────
+
   fmt:
     name: Format
     runs-on: ubuntu-latest
@@ -22,7 +27,10 @@ jobs:
           components: rustfmt
       - run: cargo fmt --all -- --check
 
-  # Clippy lint check
+  # ──────────────────────────────────────────────
+  # Lint & analysis
+  # ──────────────────────────────────────────────
+
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
@@ -32,9 +40,21 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
-  # Run tests on multiple platforms
+  audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: rustsec/audit-check@v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  # ──────────────────────────────────────────────
+  # Rust tests — cross-platform
+  # ──────────────────────────────────────────────
+
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -47,9 +67,71 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Run tests
-        run: cargo test --workspace --all-features
+        run: cargo test --workspace --all-features --locked
 
-  # Build documentation
+  # ──────────────────────────────────────────────
+  # MSRV — verify minimum supported Rust version
+  # ──────────────────────────────────────────────
+
+  msrv:
+    name: MSRV (${{ env.RUST_VERSION }})
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Check compilation on MSRV
+        run: cargo check --workspace --locked
+
+  # ──────────────────────────────────────────────
+  # Swift build — compile the Apple platform UI
+  # ──────────────────────────────────────────────
+
+  swift:
+    name: Swift Build
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: swift-macos
+
+      - name: Build Rust FFI library
+        run: |
+          MACOSX_DEPLOYMENT_TARGET=15.0 \
+          cargo build -p fracta-ffi --release --target aarch64-apple-darwin
+
+      - name: Create XCFramework
+        run: |
+          FRAMEWORKS_DIR="apple/Frameworks"
+          SWIFTPM_DIR="apple/Fracta.swiftpm/Frameworks"
+          HEADERS_DIR="apple/Fracta.swiftpm/Sources/Fracta/Generated"
+          MACOS_OUT="$FRAMEWORKS_DIR/macos-arm64"
+
+          mkdir -p "$MACOS_OUT" "$SWIFTPM_DIR"
+          cp target/aarch64-apple-darwin/release/libfracta_ffi.a "$MACOS_OUT/"
+
+          xcodebuild -create-xcframework \
+            -library target/aarch64-apple-darwin/release/libfracta_ffi.a \
+            -headers "$HEADERS_DIR" \
+            -output "$FRAMEWORKS_DIR/FractaFFI.xcframework"
+
+          cp -R "$FRAMEWORKS_DIR/FractaFFI.xcframework" "$SWIFTPM_DIR/"
+
+      - name: Build Swift package
+        working-directory: apple/Fracta.swiftpm
+        run: swift build
+
+  # ──────────────────────────────────────────────
+  # Documentation
+  # ──────────────────────────────────────────────
+
   doc:
     name: Documentation
     runs-on: ubuntu-latest
@@ -57,6 +139,30 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo doc --workspace --no-deps
+      - run: cargo doc --workspace --no-deps --locked
         env:
           RUSTDOCFLAGS: -D warnings
+
+  # ──────────────────────────────────────────────
+  # Code coverage (uploaded to job summary)
+  # ──────────────────────────────────────────────
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+      - name: Generate coverage
+        run: cargo llvm-cov --workspace --all-features --locked --lcov --output-path lcov.info
+      - name: Upload coverage summary
+        run: |
+          echo "## Code Coverage" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cargo llvm-cov report --summary-only 2>&1 | tail -20 >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
