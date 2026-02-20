@@ -63,7 +63,7 @@ ed25519-dalek = { version = "2", features = ["serde"] }
 blake3 = "1"
 
 # HTTP
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.13", features = ["json"] }
 
 # Glob pattern matching (gitignore-style rules)
 globset = "0.4"
