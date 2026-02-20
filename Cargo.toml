@@ -56,7 +56,7 @@ notify = "7"
 notify-debouncer-mini = "0.5"
 
 # Markdown (GFM superset — tables, task lists, strikethrough, footnotes; full mutable AST)
-comrak = "0.36"
+comrak = "0.50"
 
 # Crypto
 ed25519-dalek = { version = "2", features = ["serde"] }
